@@ -10,28 +10,27 @@
 
 @ifset ja
 @c Mew の texinfo
-@c Copyright (C) 1996-2023 Mew developing team.
+@c Copyright (C) 1996-2026 Mew developing team.
 @c M-x texinfo-format-buffer で info にしてね。
 @end ifset
 @ifset en
 @c Texinfo for Mew
-@c Copyright (C) 1996-2023 Mew developing team.
+@c Copyright (C) 1996-2026 Mew developing team.
 @c Try "M-x texinfo-format-buffer" or makeinfo to get the Info.
 @end ifset
 
-@set version 6.9
-@set modified 2023/02/11
-@set X-Mailer Mew version 6.9 on Emacs 28.2
+@set version 7.1
+@set modified 2026/04/16
+@set X-Mailer Mew version 7.1 on Emacs 30.2
 
 @titlepage
 @sp 10
-@center
 @title Mew
 @ifset ja
-@author Copyright @copyright{}1996-2023 Mew developing team.
+@author Copyright @copyright{}1996-2026 Mew developing team.
 @end ifset
 @ifset en
-@author Copyright @copyright{}1996-2023 Mew developing team.
+@author Copyright @copyright{}1996-2026 Mew developing team.
 @end ifset
 @end titlepage
 
@@ -100,6 +99,7 @@ home page (http://www.Mew.org/).
 * Implementation::              実装について
 * Avail::                       入手方法とメーリングリスト
 * Copyright::                   著作権について
+* Privacy Policy::              プライバシポリシー
 * Variable Index::              変数索引
 * Key Index::                   キー索引
 @end ifset
@@ -117,6 +117,7 @@ home page (http://www.Mew.org/).
 * Implementation::              Implementation Issues
 * Avail::                       Availability and mailing-list
 * Copyright::                   Copyright
+* Privacy Policy::              Privacy Policy
 * Variable Index::              Variable Index
 * Key Index::                   Key Index
 @end ifset
@@ -292,11 +293,11 @@ the name.
 @end ifset
 
 @ifset ja
-Emacs 26.1 以降を使って下さい。これらより前のバージョンや XEmacs は、サ
+Emacs 27.1 以降を使って下さい。これらより前のバージョンや XEmacs は、サ
 ポートしていません。
 @end ifset
 @ifset en
-Please use Emacs 26.1 or later. Mew doesn't support earlier versions
+Please use Emacs 27.1 or later. Mew doesn't support earlier versions
 nor XEmacs.
 @end ifset
 
@@ -578,7 +579,7 @@ Mew を起動するには、組織の設定ファイルか自分の "~/.emacs" �
 が必要です。
 @end ifset
 @ifset en
-To execute Mew, the followings are necessary either in the site
+To execute Mew, the following are necessary either in the site
 configuration file or in your "~/.emacs".
 @end ifset
 
@@ -646,7 +647,7 @@ should be written in this file.
 メールアドレスを指定するために、以下の設定が必要です。
 @end ifset
 @ifset en
-To configure your e-mail address, the followings are necessary.
+To configure your e-mail address, the following are necessary.
 @end ifset
 
 @lisp
@@ -670,7 +671,7 @@ To send e-mail messages by SMTP, the following is necessary.
 POP を使ってメッセージを受信する場合は、以下の設定が必要です。
 @end ifset
 @ifset en
-If you want to use POP to receive e-mail messages, the followings are
+If you want to use POP to receive e-mail messages, the following are
 necessary.
 @end ifset
 
@@ -685,7 +686,7 @@ necessary.
 @end ifset
 @ifset en
 If you want to use a local mailbox to receive e-mail messages, the
-followings are necessary.
+following are necessary.
 @end ifset
 
 @lisp
@@ -701,7 +702,7 @@ followings are necessary.
 IMAP を使ってメッセージを受信する場合は、以下の設定が必要です。
 @end ifset
 @ifset en
-If you want to use IMAP to receive e-mail messages, the followings are
+If you want to use IMAP to receive e-mail messages, the following are
 necessary.
 @end ifset
 
@@ -715,7 +716,7 @@ necessary.
 ニュースを読み書きする場合は、以下の設定が必要です。
 @end ifset
 @ifset en
-To read and/or write articles of NetNews, the followings are necessary.
+To read and/or write articles of NetNews, the following are necessary.
 @end ifset
 
 @lisp
@@ -1062,7 +1063,7 @@ configured.
 @end table
 
 @ifset ja
-Emacs で Mew を起動すると可愛い 2 匹の子が猫現れます。
+Emacs で Mew を起動すると可愛い 2 匹の子猫が現れます。
 @end ifset
 @ifset en
 When Mew is executed on Emacs, two cute cats appear on the cover page.
@@ -1562,16 +1563,16 @@ Text/Xml の取扱い。@samp{nil} の場合は XML を解析せずに表示。�
 The size limit of messages to be analyzed. If the size of a message is
 less than or equal to this value, it is analyzed and displayed.
 Otherwise, the raw message is displayed without analysis. The default
-value is 10000 bytes.
+value is 100000 bytes.
 @item mew-header-max-length
 The length limit of header to be analyzed. If the length of a header is
 less than or equal to this value, it is analyzed and displayed.
-Otherwise, the message is displayed as fragmentarily since the analysis
+Otherwise, the message is displayed fragmentarily since the analysis
 is stopped. The default value is 100 lines.
 @item mew-decode-broken
 Whether Mew be liberal or conservative to invalid messages. If the value
 is @samp{t}, the setting is liberal. If the value is @samp{nil}, the
-setting is for conservative. If conservative and invalid portions are
+setting is conservative. If conservative and invalid portions are
 found, they are reported in the X-Mew: field. The default value is
 @samp{t}.
 @item mew-use-text-body
@@ -1810,13 +1811,13 @@ latter message was first signed then the body was encrypted.
 @ifset ja
 本文全体、あるいは、一部のパートが暗号化されている場合、Mew はパスフレー
 ズを訊いてきます。パスフレーズを入力する際の注意事項については、
-@xref{start} を参照して下さい。入力されたパスフレーズは、あなたの秘密鍵
+@xref{password} を参照して下さい。入力されたパスフレーズは、あなたの秘密鍵
 を復号化するのに使われます。そして、復号化された秘密鍵によって、暗号化さ
 れているメッセージを解くわけです。
 @end ifset
 @ifset en
 If some parts or the entire body is encrypted, Mew asks you to input
-your pass-phrase to get plain text. Please refer to @ref{start} to know
+your pass-phrase to get plain text. Please refer to @ref{password} to know
 what you should pay attention when inputting pass-phrase. The pass-phrase
 is used to decrypt your secret key. The secret key is then used to
 decrypt cipher text.
@@ -1897,7 +1898,7 @@ kazu@@example.org という ID の付いた秘密鍵で署名されたときか�
 @ifset en
 The number enclosed by "<>" indicates which part was protected with
 PGP. "body" means the body was protected. This example tells us that the
-body was singed by kazu then encrypted for the reader. Mew first
+body was signed by kazu then encrypted for the reader. Mew first
 decrypted the message and then verified its signature of the decrypted
 message. The fact that the signature is valid indicates that no one has
 modified the content of the message since it was signed by the secret
@@ -2871,7 +2872,7 @@ Toggle warning level. If @samp{mew-warning-field-level} is 2, set it to
 @ifset en
 @section Invalid messages
 @end ifset
-@vindex mew-decode-quoted
+@vindex mew-decode-broken
 @kindex C-u. (Summary)
 @kindex C-cC-l (Summary)
 @kindex C-uC-cC-l (Summary)
@@ -2962,12 +2963,12 @@ X-Mew: Charset for body is not specified.
 @ifset ja
 もし、規格に厳密に復号化したいのなら、@samp{mew-decode-broken} を @samp{nil} に
 設定して下さい。この値は @samp{C-u.} を使うと動的に反転できます
-(@xref{singlepart} を参照)。
+(@xref{analysis} を参照)。
 @end ifset
 @ifset en
 If you want to decode messages strictly, set @samp{mew-decode-broken} to
 @samp{nil}. This value can be toggled dynamically by @samp{C-u.} (see
-@ref{singlepart}).
+@ref{analysis}).
 @end ifset
 
 @ifset ja
@@ -4468,7 +4469,7 @@ on connection fees and repeated authentication for sending.
 @item C-cC-c
 Send messages in +queue. Method is appropriate if you like to preview
 composed messages first in +queue and then send them. If
-@samp{mew-ask-flush-queue} is @samp{t}, you are asked, Flush queue? (y
+@samp{mew-ask-flush-queue} is @samp{t}, you are asked, "Flush queue? (y
 or n) ". @samp{mew-ask-flush-queue} is default to @samp{nil}.
 @end ifset
 @end table
@@ -4651,7 +4652,7 @@ the header and the body
 @kindex C-f (Attach)
 @kindex C-b (Attach)
 @kindex c (Attach)
-@kindex i (Attach)
+@kindex l (Attach)
 @kindex d (Attach)
 @kindex m (Attach)
 @kindex f (Attach)
@@ -4663,6 +4664,7 @@ the header and the body
 @kindex D (Attach)
 @kindex T (Attach)
 @kindex t (Attach)
+@kindex I (Attach)
 @kindex C (Attach)
 @kindex P (Attach)
 
@@ -4838,7 +4840,7 @@ The following is a summary of commands in the attachments region.
 ルをコピーする場合は、"/[user@@]hostname:/filepath" の形式でファイルを指
 定。
 @item l
-ファイルへシンボッリクリンクを張る。"." 上で有効。添付ファイルを 
+ファイルへシンボリックリンクを張る。"." 上で有効。添付ファイルを 
 @samp{f} を使って読み込んで編集する場合は、実体を編集してしまわないよう
 に、@samp{l} ではなく @samp{c} でコピーすべき。
 @item d
@@ -4960,8 +4962,8 @@ supported suffixes are as follows:
 .tga       Image/X-Tga
 .au        Audio/Basic
 .wav       Audio/X-Wav
-.aif?f     Auido/X-Aiff
-.midi?     Auido/X-Midi
+.aif?f     Audio/X-Aiff
+.midi?     Audio/X-Midi
 .mpga|.mp[23]  Audio/X-Mpeg
 .mpe?g     Video/Mpeg
 .mov       Video/Quicktime
@@ -5279,7 +5281,7 @@ displayed with "*". Otherwise, "guess" is displayed.
 @end ifset
 
 @ifset ja
-以下の例の見て下さい。パート 1 は、本文ですからあらかじめバッファ内にあり
+以下の例を見て下さい。パート 1 は、本文ですからあらかじめバッファ内にあり
 ます。"guess" と表示されていますから、配送時の文字コードを Mew が定めた
 規則に従って決定します。
 @end ifset
@@ -5304,7 +5306,7 @@ is decided according to rules defined by Mew.
 
 @ifset ja
 パート 3 の入力文字コードは、この例だけからだと明示的に指定されているか
-分かりません。(しかし、ユーザ自身はは実際に指定したか分かっているはずで
+分かりません。(しかし、ユーザ自身は実際に指定したか分かっているはずで
 す。) とにかく、ファイルは内部表現に直され、配送時の文字コードに指定され
 ている EUC-JP に変換されます。
 @end ifset
@@ -5389,7 +5391,7 @@ There are two ways to apply the flowed folding.
 @ifset ja
 このコマンドは、草稿に長い行があるかを調べます。
 @samp{mew-flowed-fold-threshold} を越える行が見つかったら、flowed で
-折り返しを実行します。この変数の値は 78 です。
+折り返しを実行します。この変数の初期値は 78 です。
 @end ifset
 @ifset en
 Then, Mew sees if long lines exist in a draft. If long lines whose
@@ -5438,10 +5440,10 @@ took into account automatically at composing with @samp{C-cC-c} or
 @end ifset
 
 @ifset ja
-3) @samp{C-cC-pC-f} で、@samp{mew-use-format-flowed} の値を反転できます。
+また、@samp{C-cC-pC-f} で、@samp{mew-use-format-flowed} の値を反転できます。
 @end ifset
 @ifset en
-3) You can toggle the value of @samp{mew-use-format-flowed} by
+You can also toggle the value of @samp{mew-use-format-flowed} by
 @samp{C-cC-pC-f}.
 @end ifset
 
@@ -5654,10 +5656,10 @@ This is read as follows:
 @enumerate
 @ifset ja
 @item
-Follwup-To: の値が "poster" であれば、From: の値を新しい To: へコピーす
+Followup-To: の値が "poster" であれば、From: の値を新しい To: へコピーす
 る。
 @item
-Follwup-To: が存在すれば、Follwup-To: と Newsgroups: の値を新しい
+Followup-To: が存在すれば、Followup-To: と Newsgroups: の値を新しい
 Newsgroups: へコピーする。
 @item
 Newsgroups: が存在すれば、Newsgroups: の値を新しい Newsgroups: へコピー
@@ -5711,7 +5713,7 @@ You may want to set @samp{mew-reply-all-alist} like this:
 @end lisp
 
 @ifset ja
-あるアドレスが複数ある場合は、自動的に 1 つになります。また、匿名の宛先
+同じアドレスが複数ある場合は、自動的に 1 つになります。また、匿名の宛先
 を表す ":;" で終わるアドレスも、自動的に消去されます。
 @end ifset
 @ifset en
@@ -6047,7 +6049,7 @@ secret key that is not identified the address of From:, type
 @ifset ja
 メッセージを暗号化するには、@samp{C-cC-e} とタイプして下さい。To: や Cc: 
 からアドレスを切り出して、その受信者が復号化できるよう暗号化します。暗号
-化するだけのなので、パスフレーズを訊かれることはありません。作成されたメッ
+化するだけなので、パスフレーズを訊かれることはありません。作成されたメッ
 セージは、+queue に格納されます。
 @end ifset
 @ifset en
@@ -6108,7 +6110,7 @@ If you want to protect privacy of all drafts, set
 暗号化されたメッセージに対する返答メッセージのプライバシを保護したいなら、
 @samp{mew-protect-privacy-encrypted} を @samp{t} にして、
 @samp{mew-protect-privacy-encrypted-type} に利用したいサービスを設定しま
-す。この設定は、暗号化されたメッセージへの返答する場合、上記のすべてのメー
+す。この設定は、暗号化されたメッセージへ返答する場合、上記のすべてのメー
 ルに対する設定よりも優先されます。
 @end ifset
 @ifset en
@@ -6580,7 +6582,7 @@ From: Pooh <winnie-the-pooh@@example.net>
 @ifset ja
 "party" という説明文字列の後に ":" があります。そして、いくつかアドレス
 が "," で区切られながら列挙され、";" で終端されています。このような形式
-でアドレスを書くと、Mew は ":" と ";" のアドレスにメッセージを届けますが、
+でアドレスを書くと、Mew は ":" と ";" の間のアドレスにメッセージを届けますが、
 ヘッダからは削り取ります。この例では、piglet と roo は以下のようなメッセー
 ジを受け取ります。
 @end ifset
@@ -6823,7 +6825,7 @@ mark on the previous message, configure as follows:
 以下に @samp{U} マークに関するコマンドをまとめます。
 @end ifset
 @ifset en
-The followings are summary of commands related to the @samp{U} mark.
+The following is a summary of the commands related to the @samp{U} mark.
 @end ifset
 
 @table @samp
@@ -6942,7 +6944,7 @@ Exactly speaking, the following rule is applied for local folders.
 @item If @samp{mew-trash-folder-list} is defined, messages marked with
 @samp{D} in one of the folders defined in it are deleted. Otherwise,
 they are moved to the trash.
-@item If @samp{mew-trash-folder-list} is @samp{nl},
+@item If @samp{mew-trash-folder-list} is @samp{nil},
 messages marked with @samp{D} in @samp{mew-trash-folder} are deleted.
 Otherwise, they are moved to the trash. (This is default.)
 @end ifset
@@ -7063,7 +7065,7 @@ Delete all messages in a specified folder.
 @ifset ja
 メッセージを整頓するには @samp{o} を押して、移動先のフォルダを入力し、
 @samp{o} マークを付けます。移動先のフォルダは、賢く推測してくれるので、
-ほどんどの場合はフォルダ名を入力する代わりに @samp{RET} を押すだけです。
+ほとんどの場合はフォルダ名を入力する代わりに @samp{RET} を押すだけです。
 "," で区切って複数のフォルダを入力することもできます。もちろん、
 @samp{TAB} で補完できます。詳しくは @xref{Refile} を参照して下さい。
 @end ifset
@@ -7288,11 +7290,14 @@ Apply "uudecode" on messages marked with @samp{*}.
 @ifset ja
 @samp{M-t} では、@samp{*} マークの付いたメッセージがきちんと分割順になっ
 ている必要があります。順番がくるっているなら、@samp{S} でソートするとよ
-いかもしれません。
+いかもしれません。保存するファイル名は尋ねられます。"begin" 行の名前は、
+ディレクトリ部分を除いて既定値として使われるだけです。
 @end ifset
 @ifset en
 For @samp{M-t}, messages marked with @samp{*} are supposed to be in
 the right order. If out of order, sorting with @samp{S} would help.
+Mew asks for the file to save to; the name on the "begin" line,
+without its directory part, is only offered as the default.
 @end ifset
 
 @c %%%%%%%%%%%%%%%%%
@@ -7492,7 +7497,7 @@ marks.
 マークを強い順に示します。
 @end ifset
 @ifset en
-The followings shows the marks in the strong order:
+The following shows the marks in the strong order:
 @end ifset
 
 @table @asis
@@ -7627,8 +7632,8 @@ Mew がマークの整合性を取る方法を以下に示します。
 @end ifset
 @ifset en
 To allow off-line operations, Mew synchronizes marks with an IMAP
-server everytime when a user makes an action. Mew does not
-automatically synchronize marks repeatedly. The followings are how Mew
+server every time when a user makes an action. Mew does not
+automatically synchronize marks repeatedly. The following is how Mew
 synchronizes marks.
 @end ifset
 
@@ -8035,7 +8040,7 @@ has a folder for his friend, Piglet. So, +from/piglet may be chosen.
 @ifset ja
 そこで、Mew では無視するフォルダを設定できるようになっています。デフォル
 トでは、+from 以下を無視します。ですから、個人からのメッセージは +from 
-以下に収めて下さい
+以下に収めて下さい。
 @end ifset
 @ifset en
 To avoid this, Mew allows you to specify which folders are to be
@@ -8296,7 +8301,7 @@ messages. If you want to limit it to 3000 messages, put the following to
 @end ifset
 @ifset en
 The function name to provide this feature is
-@samp{mew-refile-guess-by-message-id}.
+@samp{mew-refile-guess-by-thread}.
 @end ifset
 
 @c %%%%%%%%%%%%%%%%%
@@ -8310,7 +8315,7 @@ The function name to provide this feature is
 @vindex mew-refile-guess-from-me-is-special
 
 @ifset ja
-@xref{by-folder} で説明したメーリングリスト用のフォルダを推測するに加え
+@xref{by-folder} で説明したメーリングリスト用のフォルダを推測するのに加え
 て、個人用のフォルダを推測する機能があります。個人用のフォルダは +from 
 以下にありますから、+from 以下のフォルダを選択する機能だともいえます。以
 下の例を考えてみましょう。
@@ -8791,9 +8796,9 @@ message, the message is not marked with @samp{o}. Insert
 @ifset ja
 これまで説明した整頓とは、同じ世界の中でメッセージを移動させることでし
 た。これに対し、ある世界から他の世界へメッセージを移動させたいこともあ
-るでしょう。これは、ある世界から他の世界へメッセージへコピーし、その後
+るでしょう。これは、ある世界から他の世界へメッセージをコピーし、その後
 元のメッセージを削除することで実現できます。ここでは、ある世界から他の
-世界へメッセージへコピーする方法について説明します。
+世界へメッセージをコピーする方法について説明します。
 @end ifset
 @ifset en
 "Refile" described above is moving messages in the same world. By
@@ -8839,7 +8844,7 @@ To copy messages marked with @samp{*} to an IMAP folder, use @samp{mli}.
 @end ifset
 
 @ifset ja
-ある世界から他の世界へメッセージへコピーするコマンドを以下にまとめます。
+ある世界から他の世界へメッセージをコピーするコマンドを以下にまとめます。
 @end ifset
 @ifset en
 Here is a summary of commands which copy messages from a world to
@@ -8940,7 +8945,7 @@ Virtual モードからマークを処理することはできません。@samp{
 @ifset en
 You cannot process marks in Virtual mode. Even if you type @samp{x} to
 process marks in Virtual mode, the cursor moves to corresponding
-Summary mode, if exsists, and you are asked to type @samp{x} again.
+Summary mode, if exists, and you are asked to type @samp{x} again.
 @end ifset
 
 @ifset ja
@@ -9053,7 +9058,7 @@ asked to input the field name as follows:
 @end ifset
 
 @example
-Sort by? (default date): 
+Sort by? (date):
 @end example
 
 @ifset ja
@@ -9219,7 +9224,7 @@ up messages in order of time.
 対話の機能を使うには、まず @samp{kI} を実行し、データベースを作る必要が
 あります。新しく届くメッセージはデータベースに入らないので、@samp{kI}
 は定期的に実行して下さい。@samp{kI} は、データベースを差分更新します。
-この方式は早いのですが、ゴミが残ることは避けられないので、ときどき
+この方式は速いのですが、ゴミが残ることは避けられないので、ときどき
 @samp{C-ukI} を実行し、データベースを一から作り直して下さい。
 @end ifset
 @ifset en
@@ -9227,7 +9232,7 @@ To use the feature of dialog, execute @samp{kI} to create
 database. Since new messages are not automatically registered into the
 database, you should periodically execute @samp{kI}. @samp{kI} updates
 the database incrementally by default. This method is fast but
-garbages are left. So, sometime you should type @samp{C-ukI} to update
+garbage is left. So, sometime you should type @samp{C-ukI} to update
 the database fully.
 @end ifset
 
@@ -9333,6 +9338,43 @@ separate them with ",". You can also use a wildcard "*".
 @end ifset
 @end table
 
+@ifset ja
+@samp{?} と @samp{/} で @samp{subject=...} のような条件式を入力すると
+@samp{mewl} が呼ばれます。@samp{mewl} はヘッダの RFC 2047 の符号化を解い
+てから比較します。iconv を使えるようにビルドされていれば UTF-8 に変換する
+ので、Subject: や From: などの日本語も見つかります(@samp{head=} は除きま
+す)。iconv が無い場合は、UTF-8 で符号化されたものと、その他の文字コード
+の ASCII の部分(メーリングリストの名前など)だけが見つかります。
+utf8proc も使
+えるなら、大文字小文字や、合成済みの文字と分解された文字の違いを Unicode
+の規則で吸収します。詳しくは、@xref{condition} を参照して下さい。ただし、本文は
+符号化されたまま検索するので、本文の非 ASCII の文字列は見つかりません。文字
+列だけを入力して @samp{grep} が呼ばれた場合は、メールのファイルをそのままの
+形で検索するので、ASCII しか見つかりません。
+
+検索エンジンを使う @samp{k?} と @samp{k/} は、符号化を解いた後の内容に対
+して索引を作ります。よって、本文の非 ASCII の文字列はこちらで探して下さい。
+@end ifset
+@ifset en
+With an expression such as @samp{subject=...}, @samp{?} and @samp{/}
+call @samp{mewl}. @samp{mewl} decodes the encoded-words of RFC 2047 in
+a header before matching. If it is built with iconv, it converts them
+into UTF-8, so a non-ASCII string in Subject:, From: and so on can be
+found (except with @samp{head=}). Without iconv, only encoded-words in
+UTF-8 and ASCII in the other charsets, such as the name of a mailing
+list, can be found. If it is built with utf8proc as well, differences in
+case and between precomposed and decomposed characters are settled by
+the Unicode rules; see @ref{condition}. A body is read as it is, so a
+non-ASCII string in a
+body matches nothing. With a plain string, @samp{grep} is called,
+which reads the message files as they are, so only ASCII can be found
+with it.
+
+The search engines behind @samp{k?} and @samp{k/} index a message
+after its encodings are undone. So, look for a non-ASCII string in a
+body with those instead.
+@end ifset
+
 @c %%%%%%%%%%%%%%%%%
 @node condition, dbsearch, search, Virtual
 @ifset ja
@@ -9422,6 +9464,29 @@ Match if <pattern1> OR <pattern2>.
 @end table
 
 @ifset ja
+@samp{mewl} が utf8proc を使えるようにビルドされていれば、比較は Unicode
+の規則に従います。@samp{=} と @samp{!=} は Unicode の大文字小文字の畳み込
+みを行うので、「Straße」と「STRASSE」、「Ä」と「ä」が一致します。その分、
+@samp{!=} が除外するものも増えます。どの演算子でも、合成済みの文字と分解さ
+れた文字(NFC と NFD)は同じものとして扱います。configure に
+@samp{--enable-utf8proc-char-fold} を付けた場合は、@samp{=} と @samp{!=}
+は全角と半角の違いなども無視します。utf8proc を使わない場合や、値が UTF-8
+として正しくない場合は、バイト単位で比較し、大文字小文字を区別しないのは
+ASCII の英字だけです。@samp{head} は、いずれの場合もそのまま比較します。
+@end ifset
+@ifset en
+If @samp{mewl} is built with utf8proc, it compares by the Unicode rules.
+@samp{=} and @samp{!=} apply Unicode case folding, so "Straße" matches
+"STRASSE" and "Ä" matches "ä"; @samp{!=} excludes accordingly more.
+With every operator, precomposed and decomposed characters (NFC and
+NFD) are taken to be the same. If configure is given
+@samp{--enable-utf8proc-char-fold}, @samp{=} and @samp{!=} also ignore
+differences such as width. Without utf8proc, or when a value is not
+valid UTF-8, the comparison is byte by byte, and only ASCII letters
+match regardless of case. @samp{head} is compared as it is in any case.
+@end ifset
+
+@ifset ja
 以下に例を示します。
 @end ifset
 @ifset en
@@ -9464,7 +9529,7 @@ From: contains "kazu".
 @end example
 
 @ifset ja
-@samp{?} や @samp{/} で、パターンに入力の際に単純に @samp{RET} を押すと、
+@samp{?} や @samp{/} で、パターンの入力の際に単純に @samp{RET} を押すと、
 以下のように利用するコマンドまで入力できるようになります。
 @end ifset
 @ifset en
@@ -9563,7 +9628,7 @@ Switch one search engine to another.
 以下に、それぞれの検索エンジンの説明を示します。
 @end ifset
 @ifset en
-The followings are expiation of each search engines.
+The following explains each search engine.
 @end ifset
 
 @table @samp
@@ -9696,7 +9761,7 @@ A reverse version of @samp{C-uM-n}.
 @kindex ( (Virtual)
 @kindex ) (Virtual)
 @kindex t* (Virtual)
-@kindex t@ (Virtual)
+@kindex t$ (Virtual)
 @kindex td (Virtual)
 @kindex tM-d (Virtual)
 @kindex to (Virtual)
@@ -9750,7 +9815,7 @@ To make thread, the following commands exist.
 @table @samp
 @ifset ja
 @item tt
-Summary モード、あるは、セレクションからスレッドを作る。そして、カーソ
+Summary モード、あるいは、セレクションからスレッドを作る。そして、カーソ
 ルを現在のメッセージに移動する。もし、対応するスレッドがすでに存在して
 いるなら、スレッドに表示を切り替える。スレッドで使用された際は、元のフォ
 ルダへ移り、カーソルを現在のメッセージへ移動する。
@@ -10210,7 +10275,7 @@ C: Kazuhiko Yamamoto (Kazu) <kazu@@example.org>
 @end example
 
 @ifset ja
-それぞの要素は、以下のような意味を持ちます。
+それぞれの要素は、以下のような意味を持ちます。
 @end ifset
 @ifset en
 Each element returns the following value:
@@ -10399,6 +10464,7 @@ bottom, set as follows:
 @kindex C-cC-e (Summary)
 @kindex C-uC-cC-e (Summary)
 @kindex zz (Summary)
+@kindex h (Summary)
 @vindex mew-prog-text/html-ext
 @vindex mew-prog-msword-ext
 @vindex mew-prog-msexcel-ext
@@ -10421,7 +10487,7 @@ buffer.
 @end ifset
 
 @ifset ja
-以下の設定を "~/mew.el"に加えれば、Text/Html を Message バッファに表示
+以下の設定を "~/.mew.el" に加えれば、Text/Html を Message バッファに表示
 できるようになります。
 @end ifset
 @ifset en
@@ -10494,15 +10560,15 @@ of displaying it in the Message buffer. For this, type @samp{C-cC-e}.
 
 @ifset ja
 Message バッファに画像を表示することもできます。
-Message バッファに表示している画像の拡大や縮小は @samp{C-xo} 等でカーソルを
-画像が表示されているウィンドウに移動し、@samp{+} や @samp{-} を使います。
+Message バッファに表示している画像の拡大や縮小は @samp{C-xo} や @samp{h}等でカーソルを
+画像が表示されているウィンドウに移動し、@samp{i+} や @samp{i-} (emacs 28 までは @samp{+} や @samp{-}) を使います。
 また @samp{C-cC-e} を使い、外部のプログラムに表示させることも可能です。
 @end ifset
 @ifset en
 You can visualize an image file into the Message buffer.
 If you want to enlarge or reduce the image in the Message buffer,
-you switch to a window of the Message buffer with e.g. @samp{C-xo}
-and type @samp{+} or @samp{-}, respectively.
+you switch to a window of the Message buffer with e.g. @samp{C-xo}/@samp{h}
+and type @samp{i+} or @samp{i-} (@samp{+} or @samp{-} up to emacs 28), respectively.
 Also, you can display it with an external application by typing
 @samp{C-cC-e}, of course.
 @end ifset
@@ -10557,7 +10623,7 @@ follows:
 これを "xdg-open" に変更するには以下のようにします。
 @end ifset
 @ifset en
-If you want to set it to "xdg-open", for instace, do like this:
+If you want to set it to "xdg-open", for instance, do like this:
 @end ifset
 
 @lisp
@@ -10970,7 +11036,7 @@ ISO-8859-1 に収まるなら "iso-8859-1" を利用
 @samp{unify-8859-on-decoding-mode} を利用していない場合：
 @enumerate
 @item
-ISO-8859-1 と ISO-8859-15 のどちらにも収まる場合、@w{"}ISO-8859-1"
+ISO-8859-1 と ISO-8859-15 のどちらにも収まる場合、@w{"}ISO-8859-1" を利用
 @item
 ISO-8859-1 に収まるなら "iso-8859-1" を利用
 @item
@@ -11282,7 +11348,7 @@ Draft モードに入るときに評価される。
 +draft でないフォルダにある古い草稿を再編集した際に、Draft モードにおい
 て評価される。
 @item mew-draft-mode-reedit-draft-hook
-+draft でないフォルダにある草稿を再編集した際に、Draft モードにおいて評
++draft フォルダにある草稿を再編集した際に、Draft モードにおいて評
 価される。
 @item mew-draft-mode-reedit-queue-hook
 +queue または +postq フォルダにあるメッセージを再編集した際に、Draft モー
@@ -11307,7 +11373,7 @@ Draft モードで MIME メッセージを作る前、つまり @samp{C-cC-m} �
 メッセージを SMTP で送信/キューイングする前に評価される。メッセージの最
 終形が作られた後に評価されることに注意。
 @item mew-real-post-hook
-メッセージを NNTP で送信/キューイングする前に評価される。メッセージの最
+メッセージを NNTP で投稿/キューイングする前に評価される。メッセージの最
 終形が作られた後に評価されることに注意。
 @item mew-smtp-flush-hook
 +queue フォルダにメッセージがある場合に、SMTP が起動される前に評価され
@@ -11532,8 +11598,8 @@ POP の認証方式。@samp{'pass} は USER/PASS (生パスワード)、@samp{'a
 は APOP、@samp{t} は @samp{mew-pop-auth-list} に従った SASL を意味する。
 初期値は @samp{'apop}。
 @item mew-pop-auth-list
-SASL で利用する認証方式のリスト。優先順位の高い順に並べる。現在、
-"CRAM-MD5" が利用可能。
+SASL で利用する認証方式のリスト。優先順位の高い順に並べる。
+現在、"XOAUTH2",  "CRAM-MD5", "PLAIN" が利用可能。
 @item mew-pop-delete
 POP サーバからメッセージを取得後、POP サーバにあるメッセージを削除するか
 否か。@samp{t} なら削除。@samp{nil} なら削除しない。数値 N なら、最初の
@@ -11569,8 +11635,8 @@ USER/PASS (i.e. plain password). @samp{'apop} means the authentication with
 APOP. @samp{t} means SASL according to @samp{mew-pop-auth-list}. The
 default is @samp{'apop}.
 @item mew-pop-auth-list
-A list of SASL methods in the preferred order. Currently, "CRAM-MD5"
-can be used.
+A list of SASL methods in the preferred order.
+Currently, "XOAUTH2", "CRAM-MD5" and "PLAIN" can be used.
 @item mew-pop-delete
 Whether or not delete messages on a POP server after retrieval by POP.
 If @samp{t}, delete the messages. If @samp{nil}, retain the messages.
@@ -11626,8 +11692,8 @@ IMAP のアカウント名。初期値はログイン名。
 IMAP の認証方式。@samp{nil} は LOGIN (生パスワード)、@samp{t} は 
 @samp{mew-imap-auth-list} に基づいた SASL を意味する。初期値は @samp{t}。
 @item mew-imap-auth-list
-SASL で利用する認証方式のリスト。優先順位の高い順に並べる。現在、
-"CRAM-MD5" と "LOGIN" が利用可能。
+SASL で利用する認証方式のリスト。優先順位の高い順に並べる。
+現在、"XOAUTH2",  "CRAM-MD5", "LOGIN" が利用可能。
 @item mew-imap-delete
 IMAP サーバからメッセージを取得後、IMAP サーバにあるメッセージを削除するか
 否か。@samp{t} なら削除。@samp{nil} なら削除しない。数値 N なら、最初の
@@ -11660,7 +11726,7 @@ LOGIN (i.e. plain password). @samp{t} means SASL according to
 @samp{mew-imap-auth-list}. The default is @samp{t}.
 @item mew-imap-auth-list
 A list of SASL methods in the preferred order.
-Currently, "CRAM-MD5" and "LOGIN" can be used.
+Currently, "XOAUTH2", "CRAM-MD5" and "LOGIN" can be used.
 @item mew-imap-delete
 Whether or not delete messages on an IMAP server after retrieval by
 IMAP. If @samp{t}, delete the messages. If @samp{nil}, retain the
@@ -11783,7 +11849,7 @@ message-id = *random*.nntp-msgid-user@@nntp-msgid-domain
 
 @ifset ja
 Mew では、メッセージを送信する際に SMTP を利用します。SMTP サーバが認証
-を要求した場合、Mew は自動的にユーザにバスワードの入力を求めます。ここ
+を要求した場合、Mew は自動的にユーザにパスワードの入力を求めます。ここ
 では、SMTP を制御するための以下の変数についてまとめます。
 @end ifset
 @ifset en
@@ -11797,10 +11863,8 @@ password. This section describes following variables to control SMTP.
 @item mew-smtp-server
 SMTP サーバの名前。
 @item mew-smtp-port
-SMTP ポート番号。絶対パス名を指定すると Unix ドメインソケットを
-使用する。
-@item mew-smtp-submission-family
-SMTP サーバと接続する際に用いるアドレスファミリ。初期値は 'ipv4。
+SMTP ポート番号。以前は "smtp"だったが、現在は "submission"に変更
+されている。絶対パス名を指定すると Unix ドメインソケットを使用する。
 @item mew-smtp-ssh-server
 SSH 経由でメッセージを送る際の SSH サーバの名前。
 @item mew-smtp-ssl
@@ -11813,8 +11877,8 @@ SMTP over TLS のポート番号。
 SMTP AUTH で利用されるアカウント名。設定されない場合は、自動的にメール
 アドレスに設定される。
 @item mew-smtp-auth-list
-SMTP AUTH で利用する認証方式のリスト。優先順位の高い順に並べる。初期値
-は、'("CRAM-MD5" "PLAIN" "LOGIN")。
+SMTP AUTH で利用する認証方式のリスト。優先順位の高い順に並べる。
+初期値は、'("XOAUTH2" "CRAM-MD5" "PLAIN" "LOGIN")。
 @item mew-smtp-helo-domain
 SMTP HELO コマンドで使われるサーバ名。初期値は "localhost"。
 @item mew-smtp-mail-from
@@ -11836,10 +11900,9 @@ Message-Id: の書式は以下を参照。
 @item mew-smtp-server
 The name of your SMTP server.
 @item mew-smtp-port
-The port for SMTP.  When an absolute pathname is specified,
-it will be used as a Unix domain socket.
-@item mew-smtp-submission-family
-The address family to be used for the SMTP server.  The default value is 'ipv4.
+The port for SMTP.  The value was originally "smtp" but is currently
+"submission".  When an absolute pathname is specified, it will be used
+as a Unix domain socket.
 @item mew-smtp-ssh-server
 The name of SSH server which forwards the SMTP port.
 @item mew-smtp-ssl
@@ -11853,7 +11916,7 @@ The user name on your SMTP server. If not configured, your e-mail
 address is automatically set.
 @item mew-smtp-auth-list
 A list of SMTP AUTH methods in the preferred order.
-Currently, "CRAM-MD5", "PLAIN", and "LOGIN" can be used.
+Currently, "XOAUTH2", "CRAM-MD5", "PLAIN" and "LOGIN" can be used.
 @item mew-smtp-helo-domain
 An e-mail domain to tell a SMTP server with HELO/EHLO. The default is
 "localhost".
@@ -11885,19 +11948,6 @@ message-id = *random*.smtp-msgid-user@@smtp-msgid-domain
 @end example
 
 @ifset ja
-Message Submission (ポート番号が 587 である送信用の SMTP)を使いたい場合
-は、以下のように設定して下さい。
-@end ifset
-@ifset en
-If you want to use Message Submission (SMTP for submission whose port
-number is 587), configure as follows:
-@end ifset
-
-@lisp
-(setq mew-smtp-port "submission")
-@end lisp
-
-@ifset ja
 送信サーバとの接続に Unix ドメインソケットを使いたい場合は、以下のように
 @samp{mew-smtp-port} に絶対パス名を設定して下さい。
 @end ifset
@@ -11908,19 +11958,6 @@ configure as follows:
 
 @lisp
 (setq mew-smtp-port "/var/run/msp.sock")
-@end lisp
-
-@ifset ja
-送信サーバとの接続に IPv6 を使いたい場合は、以下のように
-@samp{mew-smtp-submission-family} に 'ipv6 を設定して下さい。
-@end ifset
-@ifset en
-If you want to use IPv6 as the transport protocol to connect MTA,
-configure as follows:
-@end ifset
-
-@lisp
-(setq mew-smtp-submission-family 'ipv6)
 @end lisp
 
 @ifset ja
@@ -11939,8 +11976,8 @@ SMTP サーバが認証を要求すると、ユーザにパスワードを尋ね
 いでしょう。
 @end ifset
 @ifset en
-Some SMTP servers are mis-configured. They requests authentication
-though errors occur if passwords are received. Mew automatically ask a
+Some SMTP servers are mis-configured. They request authentication
+though errors occur if passwords are received. Mew automatically asks a
 user to input user's password and send it to an SMTP server if it
 requires authentication. To get along with such SMTP servers above,
 configure as follows:
@@ -12079,33 +12116,43 @@ keys.
 @end ifset
 
 @example
-name, user, mail-domain, 
-cc, fcc, dcc, reply-to, organization, header-alist, proto, 
-smtp-server, smtp-port, smtp-ssh-server, smtp-ssl, smtp-ssl-port, 
-smtp-user, smtp-auth-list, 
-smtp-msgid-user, smtp-msgid-domain, smtp-helo-domain, smtp-mail-from, 
-pop-server, pop-port, pop-ssh-server, pop-ssl, pop-ssl-port, 
-pop-user, pop-auth, pop-auth-list, 
+name, user, mail-domain,
+cc, bcc, fcc, dcc, reply-to, organization, header-alist, proto,
+use-x-mailer, use-format-flowed,
+safe-addresses, safe-domains, warn-addresses, warn-domains,
+smtp-server, smtp-port, smtp-ssh-server, smtp-ssl, smtp-ssl-port,
+smtp-user, smtp-auth-list, use-smtp-auth, smtp-auth-plain-authorize-id,
+smtp-msgid-user, smtp-msgid-domain, smtp-helo-domain, smtp-mail-from,
+pop-server, pop-port, pop-ssh-server, pop-ssl, pop-ssl-port,
+pop-user, pop-auth, pop-auth-list,
 pop-size, pop-header-only, pop-delete, pop-body-lines,
 pop-proxy-server, pop-proxy-port,
-imap-server, imap-port, imap-ssh-server, imap-ssl, imap-ssl-port, 
-imap-user, imap-auth, imap-auth-list, 
-imap-size, imap-header-only, imap-delete, 
-imap-trash-folder, imap-queue-folder, imap-spam-field, imap-spam-word,
+imap-server, imap-port, imap-ssh-server, imap-ssl, imap-ssl-port,
+imap-user, imap-auth, imap-auth-list,
+imap-size, imap-header-only, imap-delete,
+imap-inbox-folder, imap-trash-folder, imap-trash-folder-list,
+imap-queue-folder, imap-spam-folder, imap-spam-field, imap-spam-word,
+imap-spam-pattern, imap-friend-folder, imap-prefix-list,
 imap-proxy-server, imap-proxy-port,
-nntp-server, nntp-port, nntp-ssh-server, nntp-ssl, nntp-ssl-port, 
-nntp-user, nntp-size, nntp-header-only, 
-nntp-msgid-user, nntp-msgid-domain, 
-prog-ssl-arg, ssl-cert-directory, ssl-verify-level, 
-inbox-folder, queue-folder, postq-folder, 
+nntp-server, nntp-port, nntp-ssh-server, nntp-ssl, nntp-ssl-port,
+nntp-user, nntp-size, nntp-header-only, nntp-newsgroup,
+nntp-msgid-user, nntp-msgid-domain,
+ssh-prog, ssh-prog-args, ssh-prog-ver,
+prog-ssl-arg, ssl-cert-directory, ssl-verify-level,
+ssl-algorithm-priority, ssl-client-keycert-list, ssl-trustfiles,
+ssl-proxy-server, ssl-proxy-port,
+oauth2-client-id, oauth2-client-secret,
+oauth2-redirect-url, oauth2-redirect-port,
+oauth2-auth-url, oauth2-token-url, oauth2-resource-url,
+inbox-folder, queue-folder, postq-folder, inbox-action-alist,
 mailbox-type, mbox-command, mbox-command-arg,
-signature-file, content-type, refile-guess-alist, 
-spam-prog, spam-prog-args, ham-prog, ham-prog-args, 
-use-old-pgp, pgp-signer, smime-signer, privacy-method, 
-protect-privacy-always, protect-privacy-always-type, 
-protect-privacy-encrypted, protect-privacy-encrypted-type, 
-protect-privacy-with-old-pgp-signature,
-use-format-flowed
+signature-file, content-type, refile-guess-alist,
+spam-prog, spam-prog-args, ham-prog, ham-prog-args,
+use-old-pgp, pgp-signer, smime-signer,
+draft-privacy-method,
+protect-privacy-always, protect-privacy-always-type,
+protect-privacy-encrypted, protect-privacy-encrypted-type,
+protect-privacy-with-old-pgp-signature
 @end example
 
 @ifset ja
@@ -12205,7 +12252,7 @@ You can automatically set the "case" in Draft mode.
 @item mew-case-guess-when-composed
 この変数が @samp{t} の場合、メッセージが作成されたときに、
 @samp{mew-case-guess-alist} に従ってケースが設定される。初期値は
-@samp{nil}
+@samp{nil}。
 @item mew-case-guess-when-replied
 この変数が @samp{t} の場合、返答によって草稿が用意されたときに、
 @samp{mew-case-guess-when-replied-alist} に従ってケースが設定される。初
@@ -12315,7 +12362,7 @@ a new format as well as the old format.
 @end ifset
 @ifset en
 @item
-In the old format, sometime "." appears. In the new fomat, no "."
+In the old format, sometime "." appears. In the new format, no "."
 appears at all. For instance, you can write ("foo" "bar") instead of
 ("foo" . "bar").
 @item
@@ -12469,6 +12516,7 @@ configure as follows:
 * addr-warn::                   アドレスの警告
 * biff::                        Biff
 * edit::                        Edit モード
+* xauth2::                      XOAUTH2
 @end ifset
 @ifset en
 * region::                      Region
@@ -12483,6 +12531,7 @@ configure as follows:
 * addr-warn::                   Warning addresses
 * biff::                        Biff
 * edit::                        Edit mode
+* xauth2::                      XOAUTH2
 @end ifset
 @end menu
 
@@ -12687,7 +12736,7 @@ TLS 機能の設定に用いる Mew の設定変数や関数の名前には、 `
 るものです。
 @end ifset
 @ifset en
-For this histrical reason, there are still variables and functions for
+For this historical reason, there are still variables and functions for
 TLS functionality with ``ssl'' keyword in Mew.
 @end ifset
 
@@ -12897,29 +12946,31 @@ GnuTLS を使う場合は前述のとおり @samp{network-security-level} を設
 ることが推奨されます。一方で Mew は、Stunnel を用いた TLS 接続について、
 @samp{mew-ssl-verify-level} という変数を用いて証明書の検証レベルを設定
 していました。この変数で設定した場合との後方互換性を保つため、Mew は
-@samp{mew-ssl-verify-level} が @samp{0} の場合のみ、
-@samp{network-security-level} を @samp{'low} に自動設定します。
-この自動設定は、 Mew による接続のみに影響します。
+@samp{mew-ssl-verify-level} が @samp{0} の場合のみ、NSM による検証を
+行いません。これは、その case の Mew による接続のみに影響します。
 @samp{mew-ssl-verify-level} のデフォルト値は @samp{1} となっています。
-@samp{0} 以外の値の場合は、@samp{network-security-level} の設定に変更
-が加えられることはありません。
+@samp{0} 以外の値は、どれも同じ意味で、NSM が
+@samp{network-security-level} に従って検証します。ローカルにインストー
+ルされた証明書で検証する @samp{3} は、GnuTLS では使えません。
 @end ifset
 @ifset en
 It is recommended to use @samp{network-security-level} to specify the
 verification level when using GnuTLS.  However, Mew traditionally used
 @samp{mew-ssl-verify-level} variable to specify the verification level
-for Stunnel program.  To keep backward compatibility with it,
-@samp{network-security-level} will be temporarily set to @samp{'low}
-if and only if @samp{mew-ssl-verify-level} is @samp{0}.  Note that the
-default value of @samp{mew-ssl-verify-level} is @samp{1} and there
-will be no change with @samp{network-security-level} when
-@samp{mew-ssl-verify-level} is not @samp{0}.
+for Stunnel program.  To keep backward compatibility with it, NSM
+does not verify the server certificate if and only if
+@samp{mew-ssl-verify-level} is @samp{0}.  This affects only Mew's
+connections of that case.  Note that the default value of
+@samp{mew-ssl-verify-level} is @samp{1}.  All the other values mean
+the same: NSM verifies the certificate according to
+@samp{network-security-level}.  The level @samp{3}, verification with
+locally installed certificates, is not available with GnuTLS.
 @end ifset
 
 @ifset ja
 GnuTLS には、証明書の検証方法を制御するための
 @samp{gnutls-verify-error} という変数もあります。GnuTLS は TCP 接続の
-確立時に証明書を検証します、この変数は、検証に失敗した時に切断するかど
+確立時に証明書を検証します。この変数は、検証に失敗した時に切断するかど
 うかを制御します。デフォルトでは @samp{nil} に設定されており、検証に失
 敗してもすぐには切断しません。前述の Network Security Managerが、TCP
 接続の確立後に検証し、切断するかどうかを決定します。すぐに切断しない設
@@ -13038,7 +13089,7 @@ in the mode line.
 
 @ifset ja
 Mew では、各プロトコルの STARTTLS 拡張を使い、TCP 接続の確立後に
-TLS を有効にすることもできます。STARTTLS を利用したい場合、ますは
+TLS を有効にすることもできます。STARTTLS を利用したい場合、まずは
 @xref{TLS/SSL} の説明に従って設定して下さい。
 @end ifset
 @ifset en
@@ -13059,9 +13110,10 @@ TLS connections.  Configure as follows for POP, for instance:
 @end ifset
 
 @lisp
-;; A default value of mew-pop-port is "pop3" (110)
 (setq mew-pop-ssl t)
-(setq mew-pop-ssl-port mew-pop-port) ;; The default is "pop3s" (995)
+;; The default value of mew-pop-ssl-port is "pop3s" (995)
+;; The default value of mew-pop-port is "pop3" (110)
+(setq mew-pop-ssl-port mew-pop-port)
 @end lisp
 
 @ifset ja
@@ -13072,9 +13124,10 @@ The following is an example to enable STARTTLS for Message Submission.
 @end ifset
 
 @lisp
-(setq mew-smtp-port "submission") ;; The default is "smtp" (25)
 (setq mew-smtp-ssl t)
-(setq mew-smtp-ssl-port mew-smtp-port) ;; The default is 465
+;; The default value of mew-smtp-ssl-port is "submissions" (465)
+;; The default value of mew-smtp-port is "submission" (587)
+(setq mew-smtp-ssl-port mew-smtp-port)
 @end lisp
 
 @c %%%%%%%%%%%%%%%%%
@@ -13361,7 +13414,7 @@ non-employee's addresses to red.
 トになります。Mew は以下のルールに従って、警告するアドレスを決めます。
 @end ifset
 @ifset en
-There are four variables to decide which address should trun red.
+There are four variables to decide which address should turn red.
 They are all a list of strings. Mew takes the following rules:
 @end ifset
 
@@ -13494,7 +13547,7 @@ Below is an example to set it to 10 minutes.
 @end lisp
 
 @c %%%%%%%%%%%%%%%%%
-@node edit, Convention, biff, Tips
+@node edit, xauth2, biff, Tips
 @ifset ja
 @section Edit モード
 @end ifset
@@ -13511,7 +13564,7 @@ Edit モードは、既存のメッセージを編集し、新しいメッセー
 @end ifset
 @ifset en
 Edit mode is a mode to edit a message to generate another new message.
-The followings are typical examples:
+The following are typical examples:
 @end ifset
 
 @itemize @minus
@@ -13559,7 +13612,7 @@ them, you are asked a folder to save the new message.
 @end ifset
 @ifset en
 Please take care that you may confuse this command as retry
-sending (@pxref{sum-write}). Retry seinding is to send a message after
+sending (@pxref{sum-write}). Retry sending is to send a message after
 editing while Edit mode is to save a message after modifying.
 @end ifset
 
@@ -13609,11 +13662,71 @@ The same as the other commands in Draft mode
 @end ifset
 @end table
 
+@c %%%%%%%%%%%%%%%%%
+@node xauth2, Convention, edit, Tips
+@ifset ja
+@section XOAUTH2
+@end ifset
+@ifset en
+@section XOAUTH2
+@end ifset
+@vindex mew-oauth2-client-id
+@vindex mew-oauth2-client-secret
+@vindex mew-oauth2-redirect-url
+@vindex mew-oauth2-redirect-port
+@vindex mew-oauth2-auth-url
+@vindex mew-oauth2-token-url
+@vindex mew-oauth2-resource-url
+
+@ifset ja
+gmailなどが、認証の仕組みとしてXOAUTH2を要求するようになりました。Mew
+でも、自分で認証認可の設定をすれば、XOAUTH2が利用できます。クライアント
+IDとクライアントシークレットを発行できたら、以下の変数に設定してくださ
+い。
+@end ifset
+@ifset en
+Gmail and other services now require XOAUTH2 as an authentication
+mechanism. Mew can also use XOAUTH2 if you configure the
+authentication and authorization yourself. Once you have issued your
+client ID and client secret, set them in the following variables.
+@end ifset
+
+@lisp
+(setq mew-oauth2-client-id "<client id>")
+(setq mew-oauth2-client-secret "<client secret>")
+@end lisp
+
+@ifset ja
+うまく設定できれば、使い始めるときに、一回だけローカルのブラウザに認可
+画面が表示されます。発行されたアクセストークンは、Mewのパスワードの仕
+組みで保存されます。
+@end ifset
+@ifset en
+If everything is set up properly, the authorization screen will be
+displayed in your local browser only once when you start using it. The
+issued access token will be saved using Mew's password mechanism.
+@end ifset
+
+@ifset ja
+現在、XOAUTH2で通信が確認できているのはgmailとMS365です。MS365では、以
+下の設定も必要です。
+@end ifset
+@ifset en
+Currently, communication with XOAUTH2 has been confirmed with gmail
+and MS365. For MS365, the following settings are also required.
+@end ifset
+
+@lisp
+(setq mew-oauth2-auth-url "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize")
+(setq mew-oauth2-token-url "https://login.microsoftonline.com/organizations/oauth2/v2.0/token")
+(setq mew-oauth2-resource-url "https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/POP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access")
+@end lisp
+
 @c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 @c      Message Convention
 @c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-@node Convention, Implementation, edit, Top
+@node Convention, Implementation, xauth2, Top
 @ifset ja
 @chapter メッセージの作法
 @end ifset
@@ -13784,10 +13897,10 @@ continue to use "mewencode". (If Base64 is implemented by Emacs, Mew
 uses the native function.)
 
 @item Why does the cursor jump onto the end of line when searching(@samp{C-s}, @samp{C-r})?
-Thread informations are not displayed in Summary mode. This is because
-the "invisible" property is dynamically put onto them when
-displayed. Strings with this property is not a target of the string
-search. But, thread informations of undisplayed lines do not have this
+Thread information is not displayed in Summary mode. This is because
+the "invisible" property is dynamically put onto it when
+displayed. Strings with this property are not targets of the string
+search. But, thread information of undisplayed lines does not have this
 property, so the string search targets them. Then a matched line is
 displayed and the "invisible" property is put. So, it seems to you that
 the string search matches the end of the line. Mew puts the "invisible"
@@ -13903,7 +14016,7 @@ https://groups.google.com/g/mew-en
 @c      Copyright
 @c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-@node Copyright, Variable Index, ml, Top
+@node Copyright, Privacy Policy, ml, Top
 @ifset ja
 @chapter 著作権について
 @end ifset
@@ -13914,7 +14027,7 @@ https://groups.google.com/g/mew-en
 @ifset ja
 Mew は以下の著作権に従います。
 
-Copyright (C) 1994-2023 Mew developing team.@*
+Copyright (C) 1994-2026 Mew developing team.@*
 All rights reserved.
 
 変更の有無にかかわらず、ソースおよびバイナリ形式の再配布および利用は、以
@@ -13947,7 +14060,7 @@ All rights reserved.
 @ifset en
 Mew conforms the following copyright.
 
-Copyright (C) 1994-2023 Mew developing team.@*
+Copyright (C) 1994-2026 Mew developing team.@*
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -14003,10 +14116,33 @@ granted to copy, modify, redistribute this manual but no warranty.
 @end ifset
 
 @c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+@c      Privacy Policy
+@c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+@node Privacy Policy, Variable Index, ml, Top
+@ifset ja
+@chapter プライバシポリシー
+@end ifset
+@ifset en
+@chapter Privacy Policy
+@end ifset
+
+@ifset ja
+ユーザは、各自のメールアドレスやメールサーバの情報を設定しなければなら
+ないが、そのような情報はどこにも送信されない。ユーザはまったくトラッキ
+ングされない。
+@end ifset
+
+@ifset en
+Users need to configure their e-mail addresses and e-mail servers but
+such information is not sent anywhere. Users are not trucked at all.
+@end ifset
+
+@c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 @c      Variable Index
 @c %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-@node Variable Index, Key Index, Copyright, Top
+@node Variable Index, Key Index, Privacy Policy, Top
 @ifset ja
 @chapter 変数索引
 @end ifset

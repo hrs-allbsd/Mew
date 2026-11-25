@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-summary.el --- Summary mode for Mew
 
 ;; Author:  Mew developing team
@@ -70,21 +71,14 @@
      (message "Please use this command on a message, not a part"))
     (t ,@body)))
 
-(defmacro mew-summary-part (&rest body)
-  "See if the cursor is on a part."
-  (declare (debug (&rest form)))
-  `(cond
-    ((eobp) (message "No part"))
-    ((not (mew-syntax-number))
-     (message "Please use this command on a part, not a message"))
-    (t ,@body)))
-
 (defmacro mew-summary-multi-msgs (&rest body)
   "Collect messages marked with '*' and set their corresponding
-files to FILES."
+files to FILES.  FLD-MSG-LIST is bound as well, but only for a BODY
+which mentions it: binding it for one which does not is an unused
+variable once this file is compiled with lexical binding."
   (declare (debug (&rest form)))
   `(let* ((FLD-MSGS (mew-summary-mark-collect2 mew-mark-review))
-	  (FLD-MSG-LIST FLD-MSGS) ;; may be used in body
+	  ,@(if (mew-member* 'FLD-MSG-LIST body) '((FLD-MSG-LIST FLD-MSGS)))
 	  FILES) ;; may be used in body
      (cond
       ((null FLD-MSGS)
@@ -112,9 +106,6 @@ files to FILES."
   (or (mew-folder-queuep (mew-summary-folder-name 'ext))
       (mew-folder-postqp (mew-summary-folder-name 'ext))))
 
-(defun mew-summary-pop-p ()
-  (mew-folder-popp (mew-summary-folder-name 'ext)))
-
 (defun mew-summary-case1 ()
   (and (mew-summary-or-virtual-p) (not (mew-summary-draft-p))))
 
@@ -131,14 +122,6 @@ This macro is used to prohibit using a command in Virtual mode."
   `(cond
     ((not (mew-summary-p))
      (message "This command can be used in Summary mode only"))
-    (t ,@body)))
-
-(defmacro mew-virtual-only (&rest body)
-  "See if the mode of this buffer is Virtual mode.
-This macro is used to prohibit using a command in Summary mode."
-  `(cond
-    ((not (mew-virtual-p))
-     (message "This command can be used in Virtual mode only"))
     (t ,@body)))
 
 (defmacro mew-thread-only (&rest body)
@@ -220,7 +203,7 @@ This macro is used to prohibit using a command in Summary mode."
 ;;;
 
 (defun mew-summary-get-region ()
-  "Get a region according to 'mew-summary-region-include-cursor-line'
+  "Get a region according to `mew-summary-region-include-cursor-line'
 and return (beg . end)."
   (save-excursion
     (let ((beg (region-beginning))
@@ -267,14 +250,12 @@ and return (beg . end)."
     (mew-summary-buffer-process mew-summary-buffer-process-status)))
 
 (defun mew-summary-setup-mode-line ()
-  (when (boundp 'mode-line-format)
-    (make-local-variable 'mode-line-format)
-    (setq mode-line-format
-	  (copy-sequence (default-value 'mode-line-format)))
-    (nconc mode-line-format mew-mode-line-format))
-  (when (boundp 'line-number-mode)
-    (make-local-variable 'line-number-mode)
-    (setq line-number-mode nil))
+  (make-local-variable 'mode-line-format)
+  (setq mode-line-format
+	(copy-sequence (default-value 'mode-line-format)))
+  (nconc mode-line-format mew-mode-line-format)
+  (make-local-variable 'line-number-mode)
+  (setq line-number-mode nil)
   (or (assq 'mew-summary-buffer-process mode-line-process)
       (setq mode-line-process
 	    (append mew-mode-line-process mode-line-process))))
@@ -361,7 +342,7 @@ and return (beg . end)."
   (mew-summary-setup-mode-line)
   (mew-summary-setup-decoration)
   (mew-highlight-cursor-line)
-  (mew-run-mode-hooks 'mew-summary-mode-hook))
+  (run-mode-hooks 'mew-summary-mode-hook))
 
 (defun mew-summary-kill ()
   "Kill this Summary mode."

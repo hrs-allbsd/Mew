@@ -1,4 +1,4 @@
-;;-*-coding:iso-2022-7bit;-*-
+;;; -*- coding: iso-2022-7bit; lexical-binding: t; -*-
 ;;; mew-lang-jp.el --- Japanese specific stuff for Mew
 
 ;; Author:  Mew developing team
@@ -181,7 +181,7 @@
    "\\(\\(s?https?\\|ftp\\|gopher\\|telnet\\|wais\\)://\\)"
    "\\)"
    "[^ 　\t\n>)\"]*"
-   "[^] 　\t\n>.,:)\"]+"))
+   "[^] 　\t\n>,:)\"]+"))
 
 (provide 'mew-lang-jp)
 

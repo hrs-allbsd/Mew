@@ -50,6 +50,7 @@
 #define TAB  '\t'
 #define SP   ' '
 #define DOT  '.'
+#define ESC  '\033'
 #define DEL 127
 
 /*
@@ -71,8 +72,8 @@
 
 #define FILESEP '/'
 
-#define STRCMP(str1, str2) strncmp(str1, str2, sizeof(str2) - 1)
-#define STRCPY(dst, src) do {strncpy(dst, src, sizeof(dst) - 1); dst[sizeof(dst) -1] = NUL;} while (0);
+#define STRCMP(str1, str2) strncmp(str1, str2, strlen(str2))
+#define STRCPY(dst, src) do {strncpy(dst, src, sizeof(dst) - 1); dst[sizeof(dst) -1] = NUL;} while (0)
 #define STRDUP(dst, src) if (((dst) = strdup((src))) == NULL) warn_exit("memory fault.")
 #define MALLOC(p, siz) if (((p) = malloc((siz))) == NULL) warn_exit("memory fault.")
 #define REALLOC(p, siz) if (((p) = realloc((p), (siz))) == NULL) warn_exit("memory fault.")
@@ -132,7 +133,7 @@ public void warn_exit(const char *, ...);
 public int search_string(char *, char *, int);
 public void pattern_init(char *);
 public int pattern_match(void);
-public char *Getline(FILE *);
+public char *Getline(FILE *, size_t *);
 public int Getopt(int, char **, const char *);
 
 extern char *warn_prog;

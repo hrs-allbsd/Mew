@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;; mew-header.el --- Mail header stuff for Mew
 
 ;; Author:  Mew developing team
@@ -136,19 +137,6 @@
 	  (mew-header-goto-next))
 	(if start (delete-region start (point)))))))
 
-(defun mew-header-replace-lines (fields prefix)
-  (when fields
-    (let ((case-fold-search t)
-	  (regex (mew-make-field-regex fields)))
-      (mew-header-goto-end)
-      (save-restriction
-	(narrow-to-region (point-min) (point))
-	(goto-char (point-min))
-	(while (re-search-forward regex nil t)
-	  (beginning-of-line)
-	  (insert prefix)
-	  (forward-line))))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Header sort
@@ -189,9 +177,6 @@
 (defun mew-draft-header-insert (field value)
   "No encoding. Just insert."
   (if (and value (stringp field)) (insert field " " value "\n")))
-
-(defun mew-draft-header-fill (field value)
-  (unless (mew-header-existp field) (mew-draft-header-insert field value)))
 
 (defun mew-header-insert (key value &optional no-fold)
   (if (and value (stringp key))
@@ -275,21 +260,24 @@
 
 (defun mew-addrstr-parse-syntax-list1 (str sep addrp depth allow-spc)
   (let* ((i 0) (len (length str))
-	 (par-cnt 0) (tmp-cnt 0) (sep-cnt 0)
-	 ;; Emacs 23 has non-safe aset.
-	 (tmp (mew-set-string-multibyte (mew-make-string len)))
-	 c ret prevc
+	 (par-cnt 0) (sep-cnt 0)
+	 tmp tmp-last c ret prevc
 	 (do-clear
 	  (lambda ()
-	    (setq tmp-cnt 0)
+	    (setq tmp nil)
+	    (setq tmp-last nil)
 	    (mew-addrstr-parse-syntax-list-check-depth depth)))
 	 (do-cons-ret
 	  (lambda ()
-	    (setq ret (cons (substring tmp 0 tmp-cnt) ret))))
+	    (setq ret (cons (apply 'string tmp) ret))))
 	 (do-copy
 	  (lambda ()
-	    (aset tmp tmp-cnt c)
-	    (setq tmp-cnt (1+ tmp-cnt))))
+	    (cond
+	     ((null tmp)
+	      (setq tmp (list c))
+	      (setq tmp-last tmp))
+	     (t
+	      (setq tmp-last (setcdr tmp-last (list c)))))))
 	 (in-fold-quote
 	  (lambda ()
 	    (setq i (1+ i))
@@ -362,7 +350,7 @@
 	  (lambda ()
 	    ;; broken quoted string cannot be rescued because
 	    ;; the separator cannot be distinguished
-	    (if (> tmp-cnt 0) (funcall do-cons-ret))
+	    (if tmp (funcall do-cons-ret))
 	    (funcall do-clear)))
 	 (do-rescue
 	  (lambda (var)
@@ -393,8 +381,8 @@
       (cond
        ((> par-cnt 0)
 	(funcall do-rescue str))
-       ((> tmp-cnt 0)
-	(funcall do-rescue tmp))))
+       (tmp
+	(funcall do-rescue (apply 'string tmp)))))
     (setq ret (delete nil ret))
     (when allow-spc
       (setq ret (mapcar (lambda (str)
@@ -414,9 +402,6 @@
 
 (defun mew-addrstr-parse-value-list (value)
   (mew-addrstr-parse-syntax-list value ?\; nil))
-
-(defun mew-addrstr-parse-value2 (value)
-  (car (mew-addrstr-parse-syntax-list value ?, nil 1)))
 
 (defun mew-addrstr-parse-value-list2 (value)
   (mew-addrstr-parse-syntax-list value ?, nil nil t))
@@ -453,9 +438,6 @@ Remove anonymous addresses."
     (nreverse ret)))
 
 ;;
-
-(defun mew-addrstr-extract-user-list (addr-list)
-  (mapcar 'mew-addrstr-extract-user addr-list))
 
 (defun mew-addrstr-extract-user (addr)
   "Extracts username from ADDR"

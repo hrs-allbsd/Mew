@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-pick.el --- Picking up messages for Mew
 
 ;; Author:  Mew developing team
@@ -37,8 +38,8 @@
 
 (defun mew-summary-pick (&optional regionp)
   "Pick messages according to a specified pick pattern.
-Then put the '*' mark onto them. 'mewl' or 'grep' is called as a
-picking command. If called with '\\[universal-argument]', the
+Then put the `*' mark onto them. `mewl' or `grep' is called as a
+picking command. If called with `\\[universal-argument]', the
 target is the region."
   (interactive "P")
   (mew-pickable
@@ -164,14 +165,24 @@ target is the region."
 	(if (> i max) (setq max i)))
       (format "%d-%d" min max))))
 
+(defun mew-mewl-pattern-args (pattern)
+  "Return the options to give PATTERN to `mewl', which expects UTF-8.
+Emacs on Windows passes arguments through the ANSI code page,
+which mangles UTF-8, so non-ASCII patterns are sent in hex there."
+  (let ((utf8 (mew-cs-encode-string pattern 'utf-8)))
+    (if (and (eq system-type 'windows-nt)
+	     (string-match-p "[^[:ascii:]]" pattern))
+	(list "-P" (mapconcat (lambda (c) (format "%02x" c)) utf8 ""))
+      (list "-p" utf8))))
+
 (defun mew-summary-pick-with-mewl (pattern folder src-msgs)
-  "A function to pick messages matching PATTERN with 'mewl'"
+  "A function to pick messages matching PATTERN with `mewl'"
   (let ((pfolder (mew-scan-mewl-folder (mew-expand-folder2 folder)))
 	(range (mew-summary-pick-range src-msgs))
-	(opts (list "-b" mew-mail-path
-		    "-l" (number-to-string mew-scan-max-field-length)
-		    "-x" mew-suffix
-		    "-p" pattern))
+	(opts (append (list "-b" mew-mail-path
+			    "-l" (number-to-string mew-scan-max-field-length)
+			    "-x" mew-suffix)
+		      (mew-mewl-pattern-args pattern)))
 	msgs)
     (if range
 	(setq opts (nconc opts (list pfolder range)))
@@ -355,6 +366,7 @@ If you want to change the stored keyword, execute this command with '\\[universa
 
 (defvar mew-pick-macro-alist nil)
 
+;; Not used in Mew; kept for M-x.
 (defun mew-pick-define-macro (str1 str2)
   "Define pick macro."
   (interactive (list (read-string "Pick pattern: ")
@@ -498,8 +510,11 @@ If you want to change the stored keyword, execute this command with '\\[universa
     (mew-pick-lex-cut)
     (nreverse ret)))
 
-(defun mew-pick-parse (mew-inherit-pick-tokens)
-  (let (mew-inherit-pick-ret)
+(defun mew-pick-parse (tokens)
+  ;; mew-inherit-pick-tokens is what mew-pick-parse1 and the rest read
+  ;; and set, so it has to be bound dynamically here.
+  (let ((mew-inherit-pick-tokens tokens)
+	mew-inherit-pick-ret)
     (mew-pick-parse1)
     (nreverse mew-inherit-pick-ret)))
 
@@ -800,10 +815,10 @@ If you want to change the stored keyword, execute this command with '\\[universa
       (format "%s == \"%s\"wc" kmd vl))
      ((string= op "==")
       (format "%s == \"%s\"w" kmd vl))
-;;      ((string= op "!=")
-;;       (format "%s != \"%s\"wc" kmd vl))
-;;      ((string= op "!==")
-;;       (format "%s != \"%s\"c" kmd vl))
+     ;;      ((string= op "!=")
+     ;;       (format "%s != \"%s\"wc" kmd vl))
+     ;;      ((string= op "!==")
+     ;;       (format "%s != \"%s\"c" kmd vl))
      (t
       (error "'%s' is not supported" op)))))
 

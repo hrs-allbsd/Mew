@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-edit.el
 
 ;; Author:  Mew developing team
@@ -43,7 +44,7 @@ Execute mew-dinfo-set before calling this."
   (mew-header-setup-decoration)
   (mew-draft-mode-name 'header)
   (force-mode-line-update)
-  (mew-run-mode-hooks 'mew-header-mode-hook)
+  (run-mode-hooks 'mew-header-mode-hook)
   ;; auto-fill-function is set by mew-header-mode-hook
   (when auto-fill-function
     (make-local-variable 'auto-fill-function)
@@ -139,8 +140,8 @@ by a header re-write."
 	      (mew-header-delete-lines mew-field-delete-common)
 	      (mew-header-delete-lines (mew-tinfo-get-field-del)))
 	    (if (mew-smtp-encode pnm case resentp fcc nil nil 'header)
-		(let ((mdi (concat (buffer-file-name) mew-draft-info-suffix)))
-		  (mew-delete-file mdi)
+		(progn
+		  (mew-encode-delete-backup)
 		  (setq msg (mew-smtp-queue case "from Draft mode"))
 		  (mew-remove-buffer buf)
 		  (if (eq action 'send)
@@ -187,8 +188,8 @@ by a header re-write."
 	      (mew-header-delete-lines mew-field-delete-common)
 	      (mew-header-delete-lines (mew-tinfo-get-field-del)))
 	    (if (mew-nntp2-encode pnm case fcc nil nil 'header)
-		(let ((mdi (concat (buffer-file-name) mew-draft-info-suffix)))
-		  (mew-delete-file mdi)
+		(progn
+		  (mew-encode-delete-backup)
 		  (setq msg (mew-nntp2-queue case "from Draft mode"))
 		  (mew-remove-buffer buf)
 		  (if (eq action 'send)
@@ -295,7 +296,8 @@ a text object to be saved can be specified."
 		file
 		(string-match mew-regex-nonascii file))
 	   (setq file (mew-samba-encoding file)))
-       (setq file (mew-summary-input-file-name nil file))
+       (setq file (mew-summary-input-file-name
+		   nil (mew-save-file-name-default file)))
        (let ((dir (mew-parent-directory file)))
          (if (and (not (file-exists-p dir))
                   (y-or-n-p (format "Make directory %s? " dir)))
@@ -456,11 +458,11 @@ If executed with '\\[universal-argument]', coding-system is asked."
 
 (defun mew-input-burst-folder ()
   (let (default)
-     (if (and mew-use-burst-folder-history mew-burst-last-folder)
-	 (setq default mew-burst-last-folder)
-       (setq default (mew-inbox-folder))) ;; local folder
-     (setq mew-burst-last-folder (mew-input-local-folder default))
-     mew-burst-last-folder))
+    (if (and mew-use-burst-folder-history mew-burst-last-folder)
+	(setq default mew-burst-last-folder)
+      (setq default (mew-inbox-folder))) ;; local folder
+    (setq mew-burst-last-folder (mew-input-local-folder default))
+    mew-burst-last-folder))
 
 (defun mew-summary-burst-part (part folder newmsg &optional num)
   (let (n len nums entry file)
@@ -656,9 +658,9 @@ typically included in a MIME-encapsulated error message.
 2. In +queue or +postq, the message is moved to +draft and is edited.
 3. Otherwise, the message is copied to +draft and is edited.
 
-For the other folders, if mew-case-guess-when-prepared is 't', each
+For the other folders, if mew-case-guess-when-prepared is `t', each
 fields of the original header is replaced according to a guessed
-sending case.  If called with '\\[universal-argument]', the original
+sending case.  If called with `\\[universal-argument]', the original
 header is reserved.
 
 See also mew-summary-edit-again."
@@ -768,7 +770,7 @@ The message is assumed to be a valid MIME message."
   (mew-mark-kill-line)
   (set-buffer-modified-p nil)
   ;; Need to delete Message window because the target message will be
-  ;; modified and its content wiil be changed.
+  ;; modified and its content will be changed.
   (mew-current-set-window-config)
   (mew-window-configure 'draft)
   ;; main part
@@ -825,7 +827,7 @@ The message is assumed to be a valid MIME message."
 
 (defun mew-summary-edit-again ()
   "Edit an old fashioned error message in which the original message
-is encapsulated after strings defined in 'mew-summary-edit-again-regex'
+is encapsulated after strings defined in `mew-summary-edit-again-regex'
 An example is \"----- Original message follows -----\". See also
 mew-summary-reedit."
   (interactive)

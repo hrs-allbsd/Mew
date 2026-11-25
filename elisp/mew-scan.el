@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-scan.el --- Scanning messages for Mew
 
 ;; Author:  Mew developing team
@@ -7,7 +8,22 @@
 
 (require 'mew)
 (eval-when-compile
-  (require 'mew-env0))
+  (require 'mew-env0)
+  (declare-function MEW-BODY "mew-scan.el")
+  (declare-function MEW-CC "mew-scan.el")
+  (declare-function MEW-CT "mew-scan.el")
+  (declare-function MEW-CTE "mew-scan.el")
+  (declare-function MEW-DATE "mew-scan.el")
+  (declare-function MEW-FLD "mew-scan.el")
+  (declare-function MEW-FROM "mew-scan.el")
+  (declare-function MEW-ID "mew-scan.el")
+  (declare-function MEW-IRT "mew-scan.el")
+  (declare-function MEW-NUM "mew-scan.el")
+  (declare-function MEW-REF "mew-scan.el")
+  (declare-function MEW-SUBJ "mew-scan.el")
+  (declare-function MEW-TO "mew-scan.el")
+  (declare-function MEW-UID "mew-scan.el")
+  (declare-function MEW-XREF "mew-scan.el"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -34,7 +50,7 @@
 ;;;
 
 (defun mew-scan-setup ()
-  "Define functions (MEW-FOO) according 'mew-scan-fields-alias'."
+  "Define functions (MEW-FOO) according `mew-scan-fields-alias'."
   (dotimes (i (length mew-scan-fields-alias))
     (fset (intern (concat "MEW-" (nth i mew-scan-fields-alias)))
 	  `(lambda () (aref mew-vec ,i)))))
@@ -46,7 +62,7 @@
 
 (defun mew-summary-form-mark ()
   "A function to return a mark.
-'mew-summary-form-mark-delete' and 'mew-summary-form-mark-review'
+`mew-summary-form-mark-delete' and `mew-summary-form-mark-review'
 effect to this function."
   (let ((mark-delete mew-mark-delete)
 	(mark-review mew-mark-review)
@@ -54,7 +70,7 @@ effect to this function."
 	(unread (and mew-use-unread-mark (mew-sinfo-get-unread-mark)))
 	duplicated spam review id body md5)
     (when mew-summary-form-mark-delete
-      (if (mew-characterp mew-summary-form-mark-delete)
+      (if (characterp mew-summary-form-mark-delete)
 	  (setq mark-delete mew-summary-form-mark-delete))
       (when (setq id (mew-idstr-get-first-id (MEW-ID)))
 	(if (member id (mew-sinfo-get-scan-id))
@@ -63,7 +79,7 @@ effect to this function."
 	  (mew-sinfo-set-scan-id (cons id (mew-sinfo-get-scan-id))))))
     (when (and mew-summary-form-mark-spam
 	       (mew-sinfo-get-inboxp))
-      (if (mew-characterp mew-summary-form-mark-spam)
+      (if (characterp mew-summary-form-mark-spam)
 	  (setq mark-spam mew-summary-form-mark-spam))
       (setq body (MEW-BODY))
       (unless (string= body "")
@@ -73,7 +89,7 @@ effect to this function."
 	      (setq spam t))
 	  (mew-sinfo-set-scan-md5 (cons md5 (mew-sinfo-get-scan-md5))))))
     (when mew-summary-form-mark-review
-      (if (mew-characterp mew-summary-form-mark-review)
+      (if (characterp mew-summary-form-mark-review)
 	  (setq mark-review mew-summary-form-mark-review))
       (let* ((mew-header-max-depth nil)
 	     (to (mew-addrstr-parse-address-list (MEW-TO)))
@@ -159,16 +175,18 @@ effect to this function."
     (if (not (string-match mew-time-rfc-regex s))
 	"0000"
       (setq year (mew-time-rfc-year))
+      ;; RFC 5322 4.3: two digits under 50 are 20xx, and anything else
+      ;; of two or three digits is 19xx.
       (cond
        ((< year 50)
 	(setq year (+ year 2000)))
-       ((< year 100)
+       ((< year 1000)
 	(setq year (+ year 1900))))
       (number-to-string year))))
 
 (defun mew-summary-form-size ()
   "A function to return the size of the message. Should be used
-with -4. See also 'mew-summary-form-size-0k' and 'mew-summary-form-size-huge'."
+with -4. See also `mew-summary-form-size-0k' and `mew-summary-form-size-huge'."
   (let ((len-1 (1- (length mew-summary-form-size-unit)))
 	(SIZE (mew-scan-uid-size (MEW-UID)))
 	(i 0) size unit)
@@ -190,7 +208,7 @@ with -4. See also 'mew-summary-form-size-0k' and 'mew-summary-form-size-huge'."
 	 unit)))))
 
 (defun mew-summary-form-extract-addr (addr)
-  "Extract addr according to 'mew-summary-form-extract-rule'."
+  "Extract addr according to `mew-summary-form-extract-rule'."
   (condition-case nil
       (let* ((func (if mew-addrbook-for-summary
 		       (mew-addrbook-func mew-addrbook-for-summary)))
@@ -223,14 +241,14 @@ with -4. See also 'mew-summary-form-size-0k' and 'mew-summary-form-size-huge'."
 
 (defun mew-summary-form-from ()
   "A function to return an address.
-If the message is destined to me AND 'mew-summary-form-from-me-prefix'
+If the message is destined to me AND `mew-summary-form-from-me-prefix'
 is a string, an address on To:, is returned. In this
-case, 'mew-summary-form-from-me-prefix' is prepended to the address.
+case, `mew-summary-form-from-me-prefix' is prepended to the address.
 
 Otherwise, an address on From: is returned.
 
-Address is converted by 'mew-summary-form-extract-addr'. See also
-'mew-summary-form-extract-rule'."
+Address is converted by `mew-summary-form-extract-addr'. See also
+`mew-summary-form-extract-rule'."
   (let* ((FROM (MEW-FROM)) (TO (MEW-TO))
 	 (from (or (mew-addrstr-parse-address FROM) "")))
     (cond
@@ -270,9 +288,9 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
 		   mew-summary-form-list-list-type))
 
 (defun mew-get-summary-form (folder)
-  "Get summary-form from 'mew-summary-form-list',
-'mew-summary-form-list-string-type, and 'mew-summary-form-list-list-type'.
-'mew-summary-form-header' is prepended. "
+  "Get summary-form from `mew-summary-form-list',
+`mew-summary-form-list-string-type, and `mew-summary-form-list-list-type'.
+`mew-summary-form-header' is prepended. "
   (let* ((form-col (mew-decide-summary-form folder))
 	 (form (or (nth 0 form-col) mew-summary-form)))
     (append mew-summary-form-header form)))
@@ -331,6 +349,7 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
 		    (concat mew-summary-form-func-prefix (symbol-name func))))
 	(when (fboundp func)
 	  (setq str (funcall func))
+	  (if (stringp str) (setq str (mew-strip-bidi-control str)))
 	  (if rightp
 	      (if (<= (string-width str) width)
 		  (format (format "%%%ds" width) str)
@@ -344,8 +363,15 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
 (defun mew-sumsym-decode-folder (fld)
   (mew-replace-character fld ?\t ? ))
 
-(defun mew-scan-get-line (mew-vec mew-inherit-width)
-  (let* ((mew-inherit-total 0) (fld "")
+(defun mew-scan-get-line (vec width)
+  ;; mew-vec and mew-inherit-width have to be bound dynamically: the
+  ;; (MEW-FOO) accessors and mew-scan-get-piece read them.  Naming the
+  ;; arguments after them did that too, but only because they are
+  ;; special, which the compiler reports as an argument shadowing a
+  ;; dynamic variable.  A let says it outright.
+  (let* ((mew-vec vec)
+	 (mew-inherit-width width)
+	 (mew-inherit-total 0) (fld "")
 	 (line (mapconcat 'mew-scan-get-piece (mew-sinfo-get-summary-form) ""))
 	 par-id my-id msg ld uid siz irt-list)
     (setq my-id (or (mew-idstr-get-first-id (MEW-ID)) ""))
@@ -415,7 +441,7 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
 	   (mew-summary-refile-log folder mark-or-dst)
 	   (setq med (+ med (mew-summary-refile-override-body mark-or-dst 'force)))
 	   (mew-mark-put mew-mark-refile))
-	  ((mew-characterp mark-or-dst) ;; mew-inbox-action-alist
+	  ((characterp mark-or-dst) ;; mew-inbox-action-alist
 	   (mew-mark-put mark-or-dst))
 	  (mark
 	   (mew-summary-mark-as mark))
@@ -488,8 +514,10 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
     (if (and n (< n len)) (setq ali (nth n mew-scan-fields-alias)))
     (if (stringp ali) (symbol-function (intern-soft (concat "MEW-" ali))))))
 
-(defun mew-scan-inbox-action (mew-vec case)
-  (let ((alist (mew-inbox-action-alist case))
+(defun mew-scan-inbox-action (vec case)
+  ;; mew-vec is read by the (MEW-FOO) accessors which val-func calls.
+  (let ((mew-vec vec)
+	(alist (mew-inbox-action-alist case))
 	key val val-func ret mark-or-dst regex-list)
     (catch 'loop
       (dolist (ent alist)
@@ -528,9 +556,11 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
     "^[ \t]*\\(On\\|At\\) .*[^.! \t\n][ \t]*$"
     "^[ \t]*In \\(message\\|article\\|mail\\|news\\|<\\|\"\\|\\[\\|(\\)"))
 
-(defun mew-scan-body (mew-vec &optional draftp)
+(defun mew-scan-body (vec &optional draftp)
   (forward-line)
-  (let* ((i 0) (I mew-scan-max-body-length)
+  ;; mew-vec is read by (MEW-CT) and (MEW-CTE) below.
+  (let* ((mew-vec vec)
+	 (i 0) (I mew-scan-max-body-length)
 	 (j 0) (J mew-scan-body-length)
 	 (ctr (MEW-CT))
 	 (cte (MEW-CTE))
@@ -553,7 +583,7 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
 	;; (setq ct (mew-syntax-get-value ctl 'cap))
 	;; So, this hard coding is used.
 	(while (and (string-match "^Multipart/" ctr)
-		   (string-match "boundary=\"?\\([^\"\n\t;]+\\)\"?" ctr))
+		    (string-match "boundary=\"?\\([^\"\n\t;]+\\)\"?" ctr))
 	  (setq boundary (mew-match-string 1 ctr))
 	  (setq boundary (concat "^--" (regexp-quote boundary)))
 	  (setq found nil)
@@ -704,11 +734,11 @@ Address is converted by 'mew-summary-form-extract-addr'. See also
 In a LOCAL folder: messages in the local folder are scanned according
 to the range which you specify.
 
-In a REMOTE folder: messages in the server's folder are cached
+In a REMOTE folder: messages in the server\\='s folder are cached
 according to the range which you specify. If
-'mew-pop-header-only'/'mew-imap-header-only'/'mew-nntp-header-only' is
+`mew-pop-header-only'/`mew-imap-header-only'/`mew-nntp-header-only' is
 non-nil, only headers of messages are cached. If executed with
-'\\[universal-argument]', these variables are considered reversed."
+`\\[universal-argument]', these variables are considered reversed."
   (interactive "P")
   (mew-summary-only
    (when (mew-summary-exclusive-p)
@@ -782,10 +812,7 @@ non-nil, only headers of messages are cached. If executed with
   (cond
    ((null t1) nil)
    ((null t2) t) ;; do update
-   ((> (nth 0 t1) (nth 0 t2)) t)
-   ((= (nth 0 t1) (nth 0 t2))
-    (if (> (nth 1 t1) (nth 1 t2)) t nil)) ;; nil if equal
-   (t nil)))
+   (t (time-less-p t2 t1))))
 
 (defun mew-summary-folder-dir-newp ()
   (let* ((folder (mew-summary-folder-name 'ext))

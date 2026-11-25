@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-auth.el
 
 ;; Author:  Mew developing team
@@ -24,6 +25,42 @@
 	(setq strongest auth))))
     strongest))
 
+;;
+;; Passwords and tokens over an unencrypted connection
+;;
+
+(defvar mew-auth-cleartext-list '("PLAIN" "LOGIN" "XOAUTH2" "AUTHINFO")
+  "Methods which send a password or a token as it is.
+\"LOGIN\" is also the IMAP command and \"AUTHINFO\" the NNTP one.")
+
+(defun mew-auth-cleartext-refused-p (auth secure case)
+  "Return t if AUTH may not be used since the connection is not SECURE."
+  (and (not secure)
+       (mew-member-case-equal auth mew-auth-cleartext-list)
+       (not (mew-auth-cleartext-allowed case))))
+
+(defun mew-auth-cleartext-refuse (proto auth case)
+  "Explain in the *Warnings* buffer why PROTO stopped before AUTH.
+Return a one-line message for the error of the session."
+  (let ((ssl (format "%s-ssl" (downcase proto))))
+    (display-warning
+     'mew
+     (format "%s: %s would send your password or token unencrypted%s,
+so Mew stopped before sending it.
+
+To protect it, connect to the server with TLS: set mew-%s
+\(see its documentation), or add (%s ...) to the entry of the case
+in mew-config-alist.
+
+To send it as it is anyway, for example to a server on your own LAN,
+add (auth-cleartext-allowed t) to the entry of the case in
+mew-config-alist, or set mew-auth-cleartext-allowed to t for all cases."
+	     proto auth
+	     (if (mew-case-default-p case) "" (format " (case %s)" case))
+	     ssl ssl)
+     :error)
+    (format "%s %s needs TLS: see the *Warnings* buffer" proto auth)))
+
 (defun mew-md5-raw (str)
   (let* ((md5str (mew-md5 str))
 	 (len (length md5str))
@@ -39,18 +76,32 @@
 ;; (mew-hmac-md5 "what do ya want for nothing?" "Jefe")
 ;; -> 0x750c783e6ab0b503eaa86e310a5db738
 
+(defun mew-string-to-octets (str)
+  "Convert STR into a unibyte string of octets.
+MD5 and HMAC are defined on octets, so a multibyte string has to be
+encoded first.  UTF-8 is used because SASL says so."
+  (if (mew-multibyte-string-p str)
+      (mew-cs-encode-string str 'utf-8)
+    str))
+
 (defun mew-hmac-md5 (message key)
   "HMAC-MD5 defined in RFC 2104"
-  (let* ((keylen (length key))
-	 (ipad 54) ;; 0x36
+  (let* ((ipad 54) ;; 0x36
 	 (opad 92) ;; 0x5c
-	 (ikey (make-string 64 0))
-	 okey digest)
-    (when (< keylen 64)
-      (dotimes (i keylen)
-	(aset ikey i (aref key i))))
+	 (blocksize 64) ;; B in RFC 2104
+	 (ikey (make-string blocksize 0))
+	 keylen okey digest)
+    (setq message (mew-string-to-octets message))
+    (setq key (mew-string-to-octets key))
+    ;; RFC 2104 says that a key longer than the block size is
+    ;; hashed first.
+    (if (> (length key) blocksize)
+	(setq key (mew-md5-raw key)))
+    (setq keylen (length key))
+    (dotimes (i keylen)
+      (aset ikey i (aref key i)))
     (setq okey (copy-sequence ikey))
-    (dotimes (i 64)
+    (dotimes (i blocksize)
       (aset ikey i (logxor (aref ikey i) ipad))
       (aset okey i (logxor (aref okey i) opad)))
     (setq digest (mew-md5-raw (concat ikey message)))
@@ -66,78 +117,6 @@
 
 (defun mew-keyed-md5 (key passwd)
   (mew-md5 (concat key passwd)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; XOAUTH2
-
-(defun mew-auth-xoauth2-auth-string (user token)
-  ;; base64(user=user@example.com^Aauth=Bearer ya29vF9dft4...^A^A)
-  (base64-encode-string (format "user=%s\1auth=Bearer %s\1\1" user token) t))
-
-(defun mew-auth-xoauth2-json-status (status-string)
-  ;; https://developers.google.com/gmail/imap/xoauth2-protocol#error_response_2
-  (require 'json)
-  (let ((json-status
-         (ignore-errors
-           (json-read-from-string
-            (base64-decode-string status-string)))))
-    (if json-status
-        (if (string-match "^2" (cdr (assoc 'status json-status)))
-            "OK" ;; 2XX
-          "NO") ;; XXX: Anyway NO?
-      "OK"))) ;; XXX: Maybe OK if not JSON.
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; OAuth2
-
-(defvar mew-auth-oauth2-client-id
-  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com")
-
-(defvar mew-auth-oauth2-client-secret
-  "xxxxxxxxxxxxxxxxxxxxxxxx")
-
-(defvar mew-auth-oauth2-auth-url "https://accounts.google.com/o/oauth2/auth"
-  "OAuth2 auth server URL.")
-
-(defvar mew-auth-oauth2-token-url "https://accounts.google.com/o/oauth2/token"
-  "OAuth2 token server URL.")
-
-(defvar mew-auth-oauth2-resource-url "https://mail.google.com/"
-  "URL used to request access to Mail Resources.")
-
-(defvar mew-auth-oauth2-redirect-url nil
-  "URL used to OAuth redirect url.")
-
-(declare-function oauth2-auth-and-store "oauth2")
-(declare-function oauth2-refresh-access "oauth2")
-(declare-function oauth2-token-access-token "oauth2")
-
-(defun mew-auth-oauth2-auth-and-store
-    (resource-url client-id client-secret &optional redirect-url)
-  "Request access to a mail resource and store it using `auth-source'."
-  (require 'oauth2)
-  (oauth2-auth-and-store
-   mew-auth-oauth2-auth-url
-   mew-auth-oauth2-token-url
-   resource-url
-   client-id
-   client-secret
-   redirect-url))
-
-(defun mew-auth-oauth2-token ()
-  "Get OAuth token for Mew to access mail service."
-  (require 'oauth2)
-  (let ((token (mew-auth-oauth2-auth-and-store
-                mew-auth-oauth2-resource-url
-                mew-auth-oauth2-client-id
-                mew-auth-oauth2-client-secret
-                mew-auth-oauth2-redirect-url)))
-    (oauth2-refresh-access token)
-    token))
-
-(defun mew-auth-oauth2-token-access-token ()
-  (require 'oauth2)
-  (ignore-errors (oauth2-token-access-token (mew-auth-oauth2-token))))
 
 (provide 'mew-auth)
 

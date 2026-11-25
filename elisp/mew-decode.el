@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-decode.el --- MIME syntax decoder for Mew
 
 ;; Author:  Mew developing team
@@ -91,7 +92,7 @@
 
 (defun mew-decode-error (error-msg)
   (mew-xinfo-set-decode-err error-msg)
-  (error error-msg))
+  (error "%s" error-msg))
 
 (defun mew-decode-error2 (error-msg)
   (mew-xinfo-set-decode-err error-msg))
@@ -119,8 +120,8 @@
        ,@body)))
 
 (defun mew-summary-toggle-header-veil ()
-  "If 'mew-use-header-veil' is non-nil, field lines of To: and Cc:
-over 'mew-header-veil-count' are covered with invisible veils.
+  "If `mew-use-header-veil' is non-nil, field lines of To: and Cc:
+over `mew-header-veil-count' are covered with invisible veils.
 This commands toggles visibility of these lines."
   (interactive)
   (when (and mew-use-header-veil (get-buffer (mew-buffer-message)))
@@ -200,10 +201,11 @@ This commands toggles visibility of these lines."
 	 (mew-decode-syntax-insert-privacy)
 	 (mew-decode-syntax-insert-warning)
 	 (save-excursion (mew-highlight-x-face (point-min) (point-max)))
+	 (save-excursion (mew-highlight-bimi (point-min) (point-max)))
 	 (setq vispos (if (get-text-property (point-min) 'mew-visible)
-			(point-min)
-		      (or (next-single-property-change (point-min) 'mew-visible)
-			  (point-max)))))))
+			  (point-min)
+			(or (next-single-property-change (point-min) 'mew-visible)
+			    (point-max)))))))
     (mew-header-veil)
     (mew-header-goto-end)
     (if (eobp)
@@ -250,7 +252,7 @@ Return the existence MIME-Version: and the value of Subject:."
 	 (prop mew-use-highlight-header)
 	 key beg med subj from contents others
 	 key-face val-face N nspec visiblep
-	 mimep mimep2
+	 mimep mimep2 ar-seen
 	 size ext ext-str ext-face)
     (mew-decode-narrow-to-header
      (while (not (eobp))
@@ -266,6 +268,11 @@ Return the existence MIME-Version: and the value of Subject:."
 	 (setq visiblep (mew-nspec-visiblep nspec))
 	 (if (fboundp visiblep)
 	     (setq visiblep (funcall visiblep (mew-buffer-substring med (1- (point))))))
+	 ;; Visible fields are moved below, so mark the topmost
+	 ;; Authentication-Results: for `mew-bimi-pass-p'.
+	 (when (and (not ar-seen) (string= key "Authentication-Results:"))
+	   (setq ar-seen t)
+	   (put-text-property beg med 'mew-topmost-ar t))
 	 (cond
 	  ((string= key mew-x-mew:)
 	   ;; deleting X-Mew: on the RFC822 header
@@ -278,7 +285,7 @@ Return the existence MIME-Version: and the value of Subject:."
 	       "Too large, truncated (the 'T' mark). To get the entire message, type '\\[mew-summary-retrieve-message]'"))))
 	  ((string-match "^Content-" key)
 	   ;; Due to PGP/MIME, properties are not put here.
-	   :; This must be "buffer-substring".
+	   ;; This must be "buffer-substring".
 	   (setq mimep2 t)
 	   (setq contents (cons (buffer-substring beg (point)) contents))
 	   (delete-region beg (point)))
@@ -371,7 +378,8 @@ Called on the beginning of the content header in the narrowed region
 Return a part syntax after moving the beginning of the content body."
   (let ((case-fold-search t)
 	(vec (make-vector (length mew-mime-fields) nil))
-	key med attr n act value syntax)
+	(n nil) (act nil)
+	key med attr value syntax)
     (mew-decode-narrow-to-header
      (while (not (eobp))
        (if (not (looking-at mew-keyval))
@@ -527,7 +535,7 @@ Return a part syntax after moving the beginning of the content body."
 	 (beg (point))
 	 opt file decoded switch)
     (unless (or (null cte) (mew-cte-composite-p cte))
-      (when (and (mew-case-equal cte mew-b64) (fboundp 'base64-decode-region))
+      (when (mew-case-equal cte mew-b64)
 	(condition-case nil
 	    (setq decoded (base64-decode-region beg (point-max)))
 	  (error (setq decoded nil)))
@@ -599,13 +607,13 @@ Return a part syntax after moving the beginning of the content body."
 
 (defun mew-decode-singlepart (cnt &optional dct parent)
   ;; Called on the beginning of the content header in the narrowed region
-  (let* ((case-fold-search t) (begin (point))
+  (let* ((case-fold-search t)
 	 (syntax (mew-decode-mime-header dct))
 	 (ctl (mew-syntax-get-ct syntax))
 	 (ct (mew-syntax-get-value ctl 'cap))
 	 (textp (mew-ct-textp ct))
 	 (cte (or (mew-syntax-get-cte syntax) mew-7bit))
-	 (multi-err t) (encap nil) type hend format delsp)
+	 (multi-err t) (encap nil) hend format delsp cooked-textp)
     ;; the beginning of the content body
     (cond
      ((not (mew-cte-p cte))
@@ -621,14 +629,9 @@ Return a part syntax after moving the beginning of the content body."
 	    (narrow-to-region (point) (point-max))
 	    (setq syntax (mew-decode-message syntax cnt))))
 	 ((string= mew-ct-ext ct)
-	  (let* ((at (mew-syntax-get-param ctl "access-type"))
-		 (func (mew-ext-include-get-func at)))
-	    (when (and func (fboundp func))
-	      (save-excursion
-		(goto-char (point-max)) ;; phantom body
-		(funcall func ctl))
-	      (delete-region begin (point))
-	      (setq syntax (mew-decode-singlepart cnt)))))
+	  ;; Never include the file of local-file here: its name comes
+	  ;; from the message.  See mew-ext-local-file-ext.
+	  )
 	 ((string= mew-ct-sts ct)
 	  ;; do nothing
 	  )
@@ -685,11 +688,12 @@ Return a part syntax after moving the beginning of the content body."
     ;; ct may be changed to apo
     ;; or single in multipart/alternative
     ;; or single in multipart/security
-    (setq type (mew-syntax-get-value (mew-syntax-get-ct syntax) 'cap))
+    (setq cooked-textp (and (string= mew-ct-txt (mew-syntax-get-value (mew-syntax-get-ct syntax) 'cap))
+			    (not (mew-syntax-from-alternative syntax))))
     (setq hend (mew-syntax-get-end syntax))
     (unless hend
       (mew-syntax-set-end syntax (point-max)))
-    (when (and (string= type mew-ct-txt)
+    (when (and cooked-textp
 	       (setq format (mew-syntax-get-param ctl "format"))
 	       (mew-case-equal format "flowed"))
       (setq delsp (mew-syntax-get-param ctl "delsp"))
@@ -699,11 +703,11 @@ Return a part syntax after moving the beginning of the content body."
       (mew-decode-flowed (mew-syntax-get-begin syntax) (point-max) delsp)
       (setq hend nil))
     ;; highlight in the cache buffers only
-    (when (and (string= type mew-ct-txt)
+    (when (and cooked-textp
 	       (string-match mew-buffer-cache-prefix (buffer-name)))
       (mew-highlight-body-region (mew-syntax-get-begin syntax) (point-max)))
     (unless hend
-      (mew-syntax-set-end syntax (point-max))) ;; ajusting
+      (mew-syntax-set-end syntax (point-max))) ;; adjusting
     (if encap
 	;; Mew allows text/plain and multipart/* for body.
 	;; If other CT: is embedded under message, it should be
@@ -886,7 +890,7 @@ Return a part syntax after moving the beginning of the content body."
 	 (count 0)
 	 (parts []) part
 	 (use-alt (and (mew-dinfo-get-use-alt) (string= ct mew-ct-mla)))
-	 prefpart lastpref lastatpref
+	 (prefpart nil) (lastpref nil) (lastatpref nil)
 	 bregex start break)
     (unless boundary
       (mew-decode-error "No boundary parameter for multipart"))
@@ -943,7 +947,7 @@ Return a part syntax after moving the beginning of the content body."
 	 (ctl (mew-syntax-get-ct syntax))
 	 (boundary (mew-syntax-get-param ctl "boundary"))
 	 (switch mew-decode-multipart-encrypted-switch)
-	 file1 file2 file3 syntax1 syntax3 func unknown existp proto
+	 file1 file2 (file3 nil) syntax1 syntax3 func unknown existp proto
 	 start result file3result privacy bregex)
     (unless boundary
       (mew-decode-error "No boundary parameter for multipart"))

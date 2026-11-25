@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-gemacs.el --- Environment of Graphical Emacs for Mew
 
 ;; Author:  Mew developing team
@@ -6,6 +7,8 @@
 ;;; Code:
 
 (require 'mew)
+
+(defvar tool-bar-map)
 
 (defvar mew-prog-pamscale (or (executable-find "pamscale") "pnmscale"))
 (defvar mew-prog-pamscale-opt
@@ -19,48 +22,45 @@
 ;;;
 
 (easy-menu-define
- mew-summary-mode-menu
- mew-summary-mode-map
- "Menu used in Summary mode."
- mew-summary-mode-menu-spec)
+  mew-summary-mode-menu
+  mew-summary-mode-map
+  "Menu used in Summary mode."
+  mew-summary-mode-menu-spec)
 
 (easy-menu-define
- mew-message-mode-menu
- mew-message-mode-map
- "Menu used in Message mode."
- mew-message-mode-menu-spec)
+  mew-message-mode-menu
+  mew-message-mode-map
+  "Menu used in Message mode."
+  mew-message-mode-menu-spec)
 
 (easy-menu-define
- mew-draft-mode-menu
- mew-draft-mode-map
- "Menu used in Draft mode."
- mew-draft-mode-menu-spec)
+  mew-draft-mode-menu
+  mew-draft-mode-map
+  "Menu used in Draft mode."
+  mew-draft-mode-menu-spec)
 
 (easy-menu-define
- mew-header-mode-menu
- mew-header-mode-map
- "Menu used in Header mode."
- mew-header-mode-menu-spec)
+  mew-header-mode-menu
+  mew-header-mode-map
+  "Menu used in Header mode."
+  mew-header-mode-menu-spec)
 
 (easy-menu-define
- mew-draft-header-menu
- mew-draft-header-map
- "Menu used in Draft mode."
- mew-draft-mode-menu-spec)
+  mew-draft-header-menu
+  mew-draft-header-map
+  "Menu used in Draft mode."
+  mew-draft-mode-menu-spec)
 
 (easy-menu-define
- mew-draft-attach-menu
- mew-draft-attach-map
- "Menu used in Draft mode."
- mew-draft-mode-menu-spec)
+  mew-draft-attach-menu
+  mew-draft-attach-map
+  "Menu used in Draft mode."
+  mew-draft-mode-menu-spec)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Toolbar functions
 ;;;
-
-(defvar mew-summary-toolbar nil)
-(defvar mew-draft-toolbar nil)
 
 (defun mew-toolbar-make (map alist)
   (let ((tool-bar-map (make-sparse-keymap)) ;; for tool-bar-add-item-from-menu
@@ -97,7 +97,6 @@
 (defun mew-summary-toolbar-update ())
 (defun mew-message-toolbar-update ())
 (defun mew-draft-toolbar-update ())
-(defun mew-header-toolbar-update ())
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -182,9 +181,9 @@ with fitting to frame size"
 	  (setq size (+ size (* (char-after) (expt ?\x100 n))))
 	  (forward-char))
       (while (< 0 len)
-	  (setq len (- len 1))
-	  (setq size (+ size (* (char-after) (expt ?\x100 len))))
-	  (forward-char)))
+	(setq len (- len 1))
+	(setq size (+ size (* (char-after) (expt ?\x100 len))))
+	(forward-char)))
     size))
 
 (defun mew-jpeg-size ()
@@ -311,9 +310,6 @@ with fitting to frame size"
 (defun mew-image-get-prog (ent)
   (nth 2 ent))
 
-(defun mew-image-get-prog2 (ent)
-  (nth 3 ent))
-
 (defun mew-mime-image (cache begin end format)
   (message "Loading image...")
   (set-buffer (mew-buffer-message))
@@ -362,7 +358,7 @@ with fitting to frame size"
 				t '(t nil) nil)
 	   (setq format 'pbm))
 	 (if mew-image-display-resize-care-height
-	     (call-process-region (point-min) (point-max) mew-prog-pamscale 
+	     (call-process-region (point-min) (point-max) mew-prog-pamscale
 				  t '(t nil) nil
 				  mew-prog-pamscale-opt
 				  (format "%d" width)
@@ -394,7 +390,7 @@ with fitting to frame size"
 
 (defun mew-x-face-create ()
   (mew-create-image
-   (string-as-unibyte (mew-buffer-substring (point-min) (point-max)))
+   (encode-coding-string (mew-buffer-substring (point-min) (point-max)) mew-cs-binary)
    nil t))
 
 (defun mew-x-face-display (xface)
@@ -404,6 +400,19 @@ with fitting to frame size"
       (when (re-search-forward regex2 nil t)
 	(goto-char (match-end 1))
 	(insert-image xface)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; BIMI
+;;;
+
+(defun mew-bimi-display (bimi)
+  (save-excursion
+    (goto-char (point-min))
+    (let ((regex2 (concat "^\\(" mew-from: "\\).*")))
+      (when (re-search-forward regex2 nil t)
+	(goto-char (match-end 1))
+	(insert-image bimi)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -428,10 +437,9 @@ with fitting to frame size"
 ;;;
 
 (define-key mew-message-mode-map [mouse-2] 'mew-browse-url-at-mouse)
-(if (and (featurep 'emacs) ;; preventing XEmacs's byte compiler from hanging
-	 (eq system-type 'darwin))
-    ;; for Mac
-    (define-key mew-message-mode-map [M-down-mouse-1] 'mew-browse-url-at-mouse))
+(when (eq system-type 'darwin)
+  ;; for Mac
+  (define-key mew-message-mode-map [M-down-mouse-1] 'mew-browse-url-at-mouse))
 
 (provide 'mew-gemacs)
 

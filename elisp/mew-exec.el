@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-exec.el
 
 ;; Author:  Mew developing team
@@ -41,8 +42,8 @@ DELS represents the messages to be deleted."
     (mew-summary-unlink-msgs src dels)))
 
 (defun mew-mark-exec-delete (src dels)
-  "Delete messages from the SRC folder according to 'mew-trash-folder'
-and 'mew-trash-folder-list'.
+  "Delete messages from the SRC folder according to `mew-trash-folder'
+and `mew-trash-folder-list'.
 DELS represents the messages to be deleted."
   (when dels
     ;; see also mew-summary-exec-remote-get-execinfo.
@@ -219,22 +220,22 @@ all marked messages before the current message."
 	(mew-summary-exec-region beg end)))))
 
 (defun mew-summary-exec-delete ()
-  "Process messages marked with 'D'."
+  "Process messages marked with `D'."
   (interactive)
   (let* ((ent (assoc mew-mark-delete mew-mark-spec))
 	 (mew-mark-spec (list ent)))
     (mew-summary-exec-region (point-min) (point-max))))
 
 (defun mew-summary-exec-unlink ()
-  "Process messages marked with 'X'."
+  "Process messages marked with `X'."
   (interactive)
   (let* ((ent (assoc mew-mark-unlink mew-mark-spec))
 	 (mew-mark-spec (list ent)))
     (mew-summary-exec-region (point-min) (point-max))))
 
 (defun mew-summary-exec-refile (&optional arg)
-  "Process messages marked with 'o'.
-If called with '\\[universal-argument]', only messages whose
+  "Process messages marked with `o'.
+If called with `\\[universal-argument]', only messages whose
 destination is the same as that of the current message are processed."
   (interactive "P")
   (let* ((ent (assoc mew-mark-refile mew-mark-spec))
@@ -315,7 +316,7 @@ destination is the same as that of the current message are processed."
 (defun mew-summary-exec-local (beg end &optional func-decide)
   (when (mew-summary-exclusive-p)
     (save-excursion
-      (condition-case nil
+      (condition-case err
 	  (let* ((marks (mew-mark-get-all-marks))
 		 (src (mew-summary-folder-name 'ext))
 		 (lbuf (mew-refile-log-buffer src))
@@ -373,7 +374,12 @@ destination is the same as that of the current message are processed."
 	      (message "Refiling and deleting...done")))
 	(quit
 	 (set-buffer-modified-p nil)
-	 (mew-summary-unlock))))))
+	 (mew-summary-unlock))
+	;; e.g. rename-file failed: do not leave the summary locked.
+	(error
+	 (set-buffer-modified-p nil)
+	 (mew-summary-unlock)
+	 (signal (car err) (cdr err)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -615,7 +621,7 @@ the queue, type '\\[mew-summary-send-message]' in the queue online."
 	(mew-lisp-save file-info job 'nobackup 'unlimit)
 	(with-temp-buffer
 	  (mew-header-insert mew-subj: (format "IMAP jobs for %s" fld))
-	  (mew-header-insert mew-date: (mew-time-ctz-to-rfc (current-time)))
+	  (mew-header-insert mew-date: (mew-time-ctz-to-rfc nil))
 	  (mew-header-insert mew-from: "Mew IMAP manager")
 	  (insert "\n")
 	  (insert "Messages to be refiled:\n")

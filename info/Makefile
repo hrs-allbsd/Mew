@@ -3,7 +3,7 @@
 ###
 ### Author:  Kazu Yamamoto <Kazu@Mew.org>
 ### Created: Aug 22, 1999
-### Revised: 
+### Revised: Sep 17, 2025
 
 ###
 ### (1) make EMACS=xemacs
@@ -12,7 +12,7 @@
 
 ################################################################
 ##
-## EDIT THE FOLLOWINGS
+## EDIT THE FOLLOWING
 ##
 
 prefix=/usr/local
@@ -39,15 +39,21 @@ PWD =
 
 ################################################################
 ##
-## DO NOT EDIT THE FOLLOWINGS
+## DO NOT EDIT THE FOLLOWING
 ##
+
+# This Makefile doesn't get remade.
+.PHONY: Makefile
 
 DESTDIR =
 
+.PHONY: all
 all: info
 
+.PHONY: info
 info: mew.info
 
+.PHONY: jinfo
 jinfo: mew.ja.info
 
 tmp.texi: mew.texi
@@ -70,6 +76,7 @@ mew.ja.info: tmpj.texi
 		--eval "(set-default-coding-systems 'utf-8-unix)" \
 		-l texinfmt -f batch-texinfo-format $?
 
+.PHONY: install install-info
 install: install-info
 install-info:
 	-@if [ ! -d $(DESTDIR)$(infodir) ]; then \
@@ -82,6 +89,7 @@ install-info:
 		echo "Don't forget to edit $(infodir)/dir for Mew."; \
 	fi
 
+.PHONY: install-jinfo
 install-jinfo:
 	-@if [ ! -d $(DESTDIR)$(infodir) ]; then \
 		$(MKDIR) $(DESTDIR)$(infodir); \

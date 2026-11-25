@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-imap2.el for appending
 
 ;; Author:  Mew developing team
@@ -23,7 +24,8 @@
     "status" "process" "ssh-process" "ssl-process"
     "cnt" "ttl" "literal+"
     ;; parameters used internally and should be initialized
-    "tag" "string" "error" "auth-selected" "authl" "aux" "done"))
+    "tag" "string" "error" "auth-selected" "authl" "aux" "done"
+    "sasl-ir" "xoauth2"))
 
 (defvar mew-imap2-info-list-clean-length 20)
 
@@ -37,13 +39,14 @@
 (defvar mew-imap2-fsm
   '(("greeting"      ("OK" . "capability"))
     ("capability"    ("OK" . "post-capability"))
+    ("xoauth2"       ("OK" . "token-xoauth2") ("NO\\|BAD" . "xoauth2-wpwd"))
     ("auth-xoauth2"  ("OK" .  "next") ("NO" . "xoauth2-wpwd"))
     ("auth-cram-md5" ("OK" . "pwd-cram-md5") ("NO" . "wpwd"))
     ("pwd-cram-md5"  ("OK" . "next") ("NO" . "wpwd"))
     ("auth-login"    ("OK" . "user-login") ("NO" . "wpwd"))
     ("user-login"    ("OK" . "pwd-login") ("NO" . "wpwd"))
     ("pwd-login"     ("OK" . "next") ("NO" . "wpwd"))
-    ("login"         ("OK" . "next") ("NO" . "wpwd"))
+    ("login"         ("OK" . "next") ("NO\\|BAD" . "wpwd"))
     ("append"        ("OK" . "post-append") ("\\[TRYCREATE\\]" . "create"))
     ("create"        ("OK" . "append") ("NO" . "wmbx"))
     ("post-append"   ("OK" . "done") ("\\[TRYCREATE\\]" . "create"))
@@ -76,6 +79,7 @@
 	(setq literal+ t))
     (mew-imap2-set-authl pnm authl)
     (mew-imap2-set-literal+ pnm literal+)
+    (mew-imap2-set-sasl-ir pnm (and (string-match "\\bSASL-IR\\b" aux) t))
     (mew-imap2-set-status pnm "authentication")
     (mew-imap2-command-authentication pro pnm)))
 
@@ -275,10 +279,40 @@
 
 (defun mew-imap2-command-pwd-login (pro pnm)
   (let* ((prompt (format "IMAP LOGIN password (%s): "
-                        (mew-imap2-get-account pnm)))
+                         (mew-imap2-get-account pnm)))
          (passwd (mew-imap2-input-passwd prompt pnm))
          (epasswd (mew-base64-encode-string passwd)))
     (mew-imap2-process-send-string2 pro epasswd)))
+
+;;;;;;;;;;;;;;;;
+;; XOAUTH2
+
+(defun mew-imap2-command-auth-xoauth2 (pro pnm)
+  (let* ((user (mew-imap2-get-user pnm))
+	 (tag (mew-imap2-passtag pnm))
+         (auth-string (mew-xoauth2-auth-string user tag (mew-imap2-get-case pnm))))
+    (if (mew-imap2-get-sasl-ir pnm)
+	(progn
+	  (mew-imap2-process-send-string pro pnm (format "AUTHENTICATE XOAUTH2 %s" auth-string))
+	  (mew-imap2-set-status pnm "auth-xoauth2"))
+      ;; Without SASL-IR (RFC 4959), the token waits for a continuation.
+      ;; It is obtained first so that the server does not wait for the browser.
+      (mew-imap2-set-xoauth2 pnm auth-string)
+      (mew-imap2-process-send-string pro pnm "AUTHENTICATE XOAUTH2")
+      (mew-imap2-set-status pnm "xoauth2"))))
+
+(defun mew-imap2-command-token-xoauth2 (pro pnm)
+  (let ((auth-string (mew-imap2-get-xoauth2 pnm)))
+    (mew-imap2-set-xoauth2 pnm nil)
+    (mew-imap2-process-send-string2 pro auth-string)
+    (mew-imap2-set-status pnm "auth-xoauth2")))
+
+(defun mew-imap2-command-xoauth2-wpwd (pro pnm)
+  (mew-imap2-set-done pnm t)
+  (mew-passwd-forget-passwd (mew-imap2-passtag pnm))
+  (delete-process pro)
+  ;; XXX: Should be cared more! Clear process and filter without sending LOGOUT.
+  (error "IMAP XOAUTH2 token is wrong!"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -299,13 +333,10 @@
 	(concat name "%" sshsrv)
       name)))
 
-(defun mew-imap2-buffer-name (pnm)
-  (concat mew-buffer-prefix pnm))
-
 (defun mew-imap2-process-send-string (pro pnm &rest args)
   (let ((str (apply 'format args))
 	(tag (mew-imap2-tag)))
-    (mew-imap2-debug "=SEND=" (concat tag " " str))
+    (mew-imap2-debug "=SEND=" (concat tag " " (mew-debug-redact str)))
     (mew-imap2-set-tag pnm tag)
     (if (and (processp pro) (eq (process-status pro) 'open))
 	(process-send-string pro (concat tag " " str mew-cs-eol))
@@ -324,12 +355,6 @@
   (let ((server (mew-imap2-get-server pnm))
 	(port (mew-imap2-get-port pnm))
 	(user (mew-imap2-get-user pnm)))
-    (concat user "@" server ":" port)))
-
-(defun mew-imap2-passtag2 (case)
-  (let ((server (mew-imap-server case))
-	(port (mew-imap-port case))
-	(user (mew-imap-user case)))
     (concat user "@" server ":" port)))
 
 (defun mew-imap2-input-passwd (prompt pnm)
@@ -364,27 +389,26 @@
 
 (defun mew-imap2-open (pnm case server port starttlsp)
   (let ((sprt (mew-*-to-port port))
-	(sslnp (mew-ssl-native-p (mew-imap-ssl case)))
+	(gnutlsp (mew-gnutls-p (mew-imap-ssl case)))
+	(pro-plist (list nil))
 	pro tm)
     (condition-case emsg
 	(progn
 	  (setq tm (run-at-time mew-imap-timeout-time nil 'mew-imap2-timeout))
 	  (message "Connecting to the IMAP server...")
-	  (setq pro (mew-open-network-stream pnm nil server sprt
-					     'imap sslnp starttlsp case))
-	  (setq pro (car pro))
+	  (setq pro-plist (mew-open-network-stream pnm nil server sprt
+						   'imap gnutlsp starttlsp case))
+	  (setq pro (car pro-plist))
 	  (when (not (processp pro)) (signal 'quit nil))
 	  (mew-process-silent-exit pro)
 	  (mew-set-process-cs pro mew-cs-text-for-net mew-cs-text-for-net)
 	  (message "Connecting to the IMAP server...done"))
       (quit
-       (setq pro nil)
        (message "Cannot connect to the IMAP server"))
       (error
-       (setq pro nil)
        (message "%s, %s" (nth 1 emsg) (nth 2 emsg))))
     (if tm (cancel-timer tm))
-    pro))
+    pro-plist))
 
 (defun mew-imap2-timeout ()
   ;; Do not timeout if the NSM query pane is active.
@@ -404,44 +428,45 @@
 	 (port (mew-*-to-string (mew-imap-port case)))
 	 (pnm (mew-imap2-info-name case))
 	 (sshsrv (mew-imap-ssh-server case))
-	 (sslp (mew-imap-ssl case))
+	 (stunnelp (mew-stunnel-p (mew-imap-ssl case)))
 	 (sslport (mew-imap-ssl-port case))
-	 (sslnp (mew-ssl-native-p (mew-imap-ssl case)))
+	 (gnutlsp (mew-gnutls-p (mew-imap-ssl case)))
 	 (starttlsp
-	  (mew-ssl-starttls-p (mew-imap-ssl case)
-			      (mew-*-to-string (mew-imap-port case))
-			      (mew-imap-ssl-port case)))
+	  (mew-starttls-p (mew-imap-ssl case)
+			  (mew-*-to-string (mew-imap-port case))
+			  (mew-imap-ssl-port case)))
 	 (proxysrv (mew-imap-proxy-server case))
 	 (proxyport (mew-imap-proxy-port case))
-	 process sshname sshpro sslname sslpro lport tls)
+	 process sshname sshpro sslname sslpro lport protocol pro-plist)
     (cond
-     (sslnp
+     (gnutlsp
       (let ((serv (if starttlsp port sslport)))
-	(setq process (mew-imap2-open pnm case server serv starttlsp))))
+	(setq pro-plist (mew-imap2-open pnm case server serv starttlsp))))
      (sshsrv
       (setq sshpro (mew-open-ssh-stream case server port sshsrv))
       (when sshpro
 	(setq sshname (process-name sshpro))
 	(setq lport (mew-ssh-pnm-to-lport sshname))
 	(when lport
-	  (setq process (mew-imap2-open pnm case "localhost" lport nil)))))
-     (sslp
-      (when starttlsp (setq tls mew-tls-imap))
-      (setq sslpro (mew-open-ssl-stream case server sslport tls))
+	  (setq pro-plist (mew-imap2-open pnm case "localhost" lport nil)))))
+     (stunnelp
+      (when starttlsp (setq protocol mew-stunnel-protocol-imap))
+      (setq sslpro (mew-open-stunnel-stream case server sslport protocol))
       (when sslpro
 	(setq sslname (process-name sslpro))
 	(setq lport (mew-ssl-pnm-to-lport sslname))
 	(when lport
-	  (setq process (mew-imap2-open pnm case mew-ssl-localhost lport nil)))))
+	  (setq pro-plist (mew-imap2-open pnm case mew-stunnel-localhost lport nil)))))
      (proxysrv
-      (setq process (mew-imap2-open pnm case proxysrv proxyport nil)))
+      (setq pro-plist (mew-imap2-open pnm case proxysrv proxyport nil)))
      (t
-      (setq process (mew-imap2-open pnm case server port nil))))
+      (setq pro-plist (mew-imap2-open pnm case server port nil))))
+    (setq process (car pro-plist))
     (if (null process)
 	(cond
 	 ((and sshsrv (null sshpro))
 	  (message "Cannot create to the SSH connection"))
-	 ((and sslp (null sslpro))
+	 ((and stunnelp (null sslpro))
 	  (message "Cannot create to the SSL/TLS connection"))
 	 (t
 	  (message "Cannot connect to the IMAP server")))
@@ -467,13 +492,9 @@
       (set-process-sentinel process 'mew-imap2-sentinel)
       (set-process-filter process 'mew-imap2-filter)
       (message "Copying in background...")
-      (when sslnp
-	;; GnuTLS requires a client-initiated command after the
-	;; session is established or upgraded to use TLS because
-	;; no additional greeting from the server.
-	(mew-imap2-set-status pnm "capability")
-	(mew-imap2-command-capability process pnm))
-      )))
+      (when gnutlsp
+	(let ((greeting (plist-get (cdr pro-plist) :greeting)))
+	  (if (stringp greeting) (mew-imap2-filter process greeting)))))))
 
 (defun mew-summary-from-local-to-imap ()
   "Copy messages in local folders under specified folder prefix
@@ -580,9 +601,9 @@ with '*' in the region are handled."
 	(mew-imap2-set-aux pnm str)
         (setq next (mew-imap2-fsm-next
                     status
-                    (if (string= status "auth-xoauth2")
-                        (mew-auth-xoauth2-json-status (mew-match-string 1))
-                      "OK"))))
+                    ;; XOAUTH2 succeeds with a tagged OK.  A continuation
+                    ;; after the token is an error in JSON.
+                    (if (string= status "auth-xoauth2") "NO" "OK"))))
        ((string-match eos str)
 	(mew-imap2-set-tag pnm nil)
 	(setq code (mew-match-string 1 str))

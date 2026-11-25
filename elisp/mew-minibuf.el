@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-minibuf.el --- Minibuffer input methods for Mew
 
 ;; Author:  Mew developing team
@@ -14,18 +15,18 @@
 
 (defvar mew-input-complete-function nil
   "A function to be called when TAB is typed in minibuffer.
-This is used in 'mew-input-complete'.")
+This is used in `mew-input-complete'.")
 
 (defun mew-input-complete ()
   "Do completion according to the global variable
-\"mew-input-complete-function\"."
+`mew-input-complete-function'."
   (interactive)
   (if (and mew-input-complete-function (fboundp mew-input-complete-function))
       (funcall mew-input-complete-function)))
 
 (defvar mew-input-exit-minibuffer-function nil
   "A function to be called when RET is typed in minibuffer.
-This function are used to check validity of 'case' and sort key.")
+This function are used to check validity of `case' and sort key.")
 
 (defun mew-input-exit-minibuffer ()
   "Ensure the input meets a condition."
@@ -36,8 +37,8 @@ This function are used to check validity of 'case' and sort key.")
       (exit-minibuffer)))
 
 (defvar mew-input-comma-function nil
-  "A function to be called when ',' is typed in minibuffer.
-This function can be used to check validity of 'case'.")
+  "A function to be called when `,' is typed in minibuffer.
+This function can be used to check validity of `case'.")
 
 (defun mew-input-comma ()
   "Ensure the input meets a condition."
@@ -885,10 +886,6 @@ it is deleted automatically."
   (mew-mode-input-directory-name
    mew-summary-preserve-dir mew-summary-previous-directory mew-save-dir))
 
-(defun mew-draft-input-directory-name ()
-  (mew-mode-input-directory-name
-   mew-draft-preserve-dir mew-draft-previous-directory mew-copy-dir))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; String
@@ -976,7 +973,7 @@ it is deleted automatically."
   (let ((ociea cursor-in-echo-area) char)
     (unwind-protect
 	(progn
-	  (message (or msg "Input mark: "))
+	  (message "%s" (or msg "Input mark: "))
 	  (setq cursor-in-echo-area t)
 	  (setq char (read-char))
 	  (unless (char-equal char ?\r)

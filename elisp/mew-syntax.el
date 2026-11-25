@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-syntax.el --- Internal syntax for Mew
 
 ;; Author:  Mew developing team
@@ -42,8 +43,8 @@
 ;;
 ;;
 
-(defun mew-syntax-get-key (syntax)
-  (aref syntax 0))
+(defun mew-syntax-from-alternative (syntax)
+  (listp (aref syntax 1)))
 
 (defun mew-syntax-get-begin (syntax)
   (let ((beg (aref syntax 1)))
@@ -290,16 +291,6 @@
 ;;
 ;;
 
-(defun mew-summary-goto-part (msg part)
-  (let (here)
-    (save-excursion
-      (goto-char (point-min))
-      (when (and (re-search-forward (mew-regex-sumsyn-msg msg) nil t)
-		 (re-search-forward (mew-regex-jmp-part part) nil t))
-	(beginning-of-line)
-	(setq here (point))))
-    (and here (goto-char here))))
-
 (defun mew-summary-goto-message ()
   (if (eobp) (forward-line -1))
   (when (mew-in-decode-syntax-p)
@@ -350,8 +341,8 @@
   "Display the folder name of this message, its number, its size
 and its unique id. If this is a cache message, both the unique
 id and the size are also shown.  If called with
-'\\[universal-argument]', its Message-Id: and its parent's
-Message-Id: are displayed instead.  If 'mew-use-cut-file-name' is
+`\\[universal-argument]', its Message-Id: and its parent\\='s
+Message-Id: are displayed instead.  If `mew-use-cut-file-name' is
 non-nil, the file path is pushed to the cut buffer of your window
 system."
   (interactive "P")
@@ -431,10 +422,6 @@ system."
 (defun mew-summary-message-uid ()
   (when (mew-sumsyn-match mew-regex-sumsyn-long)
     (mew-sumsyn-message-uid)))
-
-(defun mew-summary-message-size ()
-  (when (mew-sumsyn-match mew-regex-sumsyn-long)
-    (mew-sumsyn-message-size)))
 
 (defun mew-syntax-change-message-number (msg)
   (save-excursion
@@ -700,8 +687,8 @@ system."
       ;; text/plain only
       (mew-syntax-singlepart subsyntax dec part func 'body)))))
 
-;012345678901234567890123456789012345678901234567890123456789012345678901234567
-;<4>snss<27-2                   >ss<24+2                    >ss<16            >
+					;012345678901234567890123456789012345678901234567890123456789012345678901234567
+					;<4>snss<27-2                   >ss<24+2                    >ss<16            >
 
 (defun mew-syntax-format (syntax number dec)
   (let* ((file (if (not dec) (mew-syntax-get-file syntax)))
@@ -725,7 +712,7 @@ system."
 	 (lf (- LT lm ln lt ld 8))
 	 (marks (make-string lm mew-sp))
 	 (i 0) (N (length privacy))
-	 ctm ctp)
+	 (ctm nil) (ctp nil))
 
     (run-hooks 'mew-syntax-format-hook)
 
@@ -830,7 +817,7 @@ system."
 	(save-restriction
 	  (narrow-to-region beg (point))
 	  (goto-char (point-min))
-	  (while (re-search-forward "BAD.*sign" nil t)
+	  (while (re-search-forward "BAD \\(PGP\\|S/MIME\\) sign" nil t)
 	    (put-text-property
 	     (match-beginning 0)
 	     (match-end 0)

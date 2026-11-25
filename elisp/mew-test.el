@@ -1,0 +1,2440 @@
+;;; -*- lexical-binding: t; -*-
+;;; mew-test.el --- ERT tests for Mew
+
+;; Author:  Mew developing team
+;; Created: Sep 22, 2026
+
+;;; Commentary:
+
+;; Tests for functions which do not depend on the user's environment,
+;; that is, no folders, no network and no external programs.
+;;
+;; Run them with:
+;;
+;;	make test
+;;
+;; or directly:
+;;
+;;	emacs -Q -batch -L . -l mew-test.el -f ert-run-tests-batch-and-exit
+
+;;; Code:
+
+(require 'cl-lib)
+(require 'ert)
+(require 'mew)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-func.el: strings
+;;;
+
+(ert-deftest mew-test-split ()
+  (should (equal (mew-split "a:b::c" ?:) '("a" "b" "" "c")))
+  (should (equal (mew-split "abc" ?:) '("abc")))
+  (should (equal (mew-split "" ?:) nil)))
+
+(ert-deftest mew-test-split-quoted ()
+  (should (equal (mew-split-quoted "a,b,c" ?,) '("a" "b" "c")))
+  ;; A separator in a quoted string is not a separator.
+  (should (equal (mew-split-quoted "\"a,b\",c" ?,) '("\"a,b\"" "c")))
+  ;; Single quotes are removed unless NO-SINGLE.
+  (should (equal (mew-split-quoted "'x','y'" ?,) '("x" "y")))
+  (should (equal (mew-split-quoted "'x','y'" ?, nil nil 'no-single)
+                 '("'x'" "'y'")))
+  ;; QOPEN/QCLOSE, as mew-encode-canonicalize-address uses it.
+  (should (equal (mew-split-quoted "to:a,b;,c" ?, ?: ?\; 'no-single)
+                 '("to:a,b;" "c"))))
+
+(ert-deftest mew-test-split-quoted-backslash ()
+  "A backslash escapes the next character.
+`dotimes' rebinds its variable for each iteration since Emacs 28, so
+the loop must not rely on `setq' of the loop variable to skip a
+character."
+  ;; An escaped double quote must not toggle the quoted state.
+  (should (equal (mew-split-quoted "\"a\\\"b\",c" ?,) '("\"a\\\"b\"" "c")))
+  ;; An escaped separator is not a separator.
+  (should (equal (mew-split-quoted "a\\,b,c" ?,) '("a\\,b" "c")))
+  ;; A trailing backslash must not run off the end of the string.
+  (should (equal (mew-split-quoted "a,b\\" ?,) '("a" "b\\"))))
+
+(ert-deftest mew-test-chop ()
+  (should (equal (mew-chop "  a b \t") "a b"))
+  (should (equal (mew-chop "abc") "abc")))
+
+(ert-deftest mew-test-capitalize ()
+  (should (equal (mew-capitalize "content-type") "Content-Type"))
+  (should (equal (mew-capitalize "TEXT/PLAIN") "Text/Plain"))
+  ;; Emacs 31 signals an error for aset of a non-byte into a string.
+  (should (equal (mew-capitalize "件名-x") "件名-X")))
+
+(ert-deftest mew-test-quote-string ()
+  (should (equal (mew-quote-string "a\"b" ?\\ '(?\")) "a\\\"b"))
+  (should (equal (mew-quote-string "ab" ?\\ '(?\")) "ab"))
+  (should (equal (mew-quote-string "山\"本" ?\\ '(?\")) "山\\\"本")))
+
+(ert-deftest mew-test-remove-single-quote ()
+  "Both branches are covered: `string-replace' from Emacs 28.1, and
+the loop before it, which the oldest Emacs of the CI matrix runs."
+  (should (equal (mew-remove-single-quote "'a'b'") "ab"))
+  (should (equal (mew-remove-single-quote "ab") "ab"))
+  (should (equal (mew-remove-single-quote "") ""))
+  (should (equal (mew-remove-single-quote "'''") ""))
+  (should (equal (mew-remove-single-quote "'日'本'") "日本")))
+
+(ert-deftest mew-test-set-string-multibyte ()
+  "The bytes of a unibyte string are read as Emacs's own encoding.
+This is what the obsolete `string-as-multibyte' did."
+  ;; Already multibyte: unchanged.
+  (should (equal (mew-set-string-multibyte "日本語") "日本語"))
+  ;; The utf-8 bytes of a string are read back into it.
+  (should (equal (mew-set-string-multibyte
+                  (encode-coding-string "日本語" 'utf-8))
+                 "日本語"))
+  (should (equal (mew-set-string-multibyte (unibyte-string 226 128 148)) "—"))
+  ;; A byte which is not valid utf-8 stays one byte instead of signalling.
+  (let ((raw (mew-set-string-multibyte (unibyte-string 233 233))))
+    (should (multibyte-string-p raw))
+    (should (= (length raw) 2)))
+  (should (equal (mew-set-string-multibyte "") "")))
+
+(ert-deftest mew-test-replace-white-space ()
+  (should (equal (mew-replace-white-space "a \t\n  b") "a b"))
+  (should (equal (mew-replace-white-space2 "a \t\r\n b") "a_b")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-func.el: files
+;;;
+
+(ert-deftest mew-test-file-get-links ()
+  "A file which has not been linked to has one link."
+  (let ((file (make-temp-file "mew-test")))
+    (unwind-protect
+        (should (equal (mew-file-get-links file) 1))
+      (delete-file file))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-func.el: lists
+;;;
+
+(ert-deftest mew-test-uniq-list ()
+  (should (equal (mew-uniq-list (list 1 2 1 3 2)) '(1 2 3))))
+
+(ert-deftest mew-test-delete ()
+  (should (equal (mew-delete "k" (list (list "k" 1) (list "j" 2) (list "k" 3)))
+                 '(("j" 2))))
+  (should (equal (mew-delete nil (list (list "k" 1))) '(("k" 1)))))
+
+(ert-deftest mew-test-get-next ()
+  (should (eq (mew-get-next '(a b c) 'b) 'c))
+  ;; The next member of the last one is the first one.
+  (should (eq (mew-get-next '(a b c) 'c) 'a)))
+
+(ert-deftest mew-test-member-case-equal ()
+  (should (equal (mew-member-case-equal "CC" '("to" "cc" "bcc")) 1))
+  (should-not (mew-member-case-equal "x" '("to" "cc"))))
+
+(ert-deftest mew-test-assoc-case-equal ()
+  (should (equal (mew-assoc-case-equal "B" '(("a" 1) ("b" 2)) 0) '("b" 2)))
+  (should-not (mew-assoc-case-equal "c" '(("a" 1) ("b" 2)) 0)))
+
+(ert-deftest mew-test-set ()
+  "The variables have to be the caller's own.
+This file is compiled with lexical binding, so a `mew-set' which
+assigns with `set' reaches the global value of the symbol and leaves
+the local variables below alone."
+  (let (a b c)
+    (mew-set '(a b c) '(1 2 3))
+    (should (equal (list a b c) '(1 2 3))))
+  ;; nil in VARS skips a value.
+  (let (a c)
+    (mew-set '(a nil c) '(1 2 3))
+    (should (equal (list a c) '(1 3))))
+  ;; Fewer values than variables: the rest are nil.
+  (let ((a 'x) (b 'y))
+    (mew-set '(a b) '(1))
+    (should (equal (list a b) '(1 nil))))
+  ;; VALS is evaluated once, as it was when this was a function.
+  (let ((n 0) a b)
+    (mew-set '(a b) (progn (setq n (1+ n)) '(1 2)))
+    (should (= n 1))
+    (should (equal (list a b) '(1 2)))))
+
+(ert-deftest mew-test-join ()
+  (should (equal (mew-join "," '("a" "b" "c")) "a,b,c"))
+  (should (equal (mew-join "," nil) "")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-func.el: Date:
+;;;
+
+(ert-deftest mew-test-time-rfc-to-sortkey ()
+  ;; The sort key is in the local zone, so it cannot be compared with a
+  ;; literal.  What matters is that the same instant gives the same key
+  ;; and that the order is preserved.
+  (let ((key (mew-time-rfc-to-sortkey "Wed, 26 Jul 2000 21:18:35 +0900")))
+    (should (equal key (mew-time-rfc-to-sortkey
+                        "Wed, 26 Jul 2000 12:18:35 +0000")))
+    (should (equal key (mew-time-rfc-to-sortkey
+                        "Wed, 26 Jul 2000 12:18:35 GMT")))
+    (should (equal key (mew-time-rfc-to-sortkey
+                        "Wed, 26 Jul 2000 07:18:35 -0500")))
+    (should (string-match "\\`[0-9]\\{14\\}\\'" key)))
+  ;; The seconds are optional.
+  (should (mew-time-rfc-to-sortkey "26 Jul 2000 21:18 +0900"))
+  ;; Older messages sort first.
+  (should (string< (mew-time-rfc-to-sortkey "26 Jul 2000 00:00:00 +0000")
+                   (mew-time-rfc-to-sortkey "27 Jul 2000 00:00:00 +0000")))
+  (should (string< (mew-time-rfc-to-sortkey "31 Dec 1999 23:59:59 +0000")
+                   (mew-time-rfc-to-sortkey "01 Jan 2000 00:00:01 +0000")))
+  ;; RFC 5322 4.3: two digits under 50 are 20xx, and anything else of
+  ;; two or three digits is 19xx.  A mid-year date is used so that the
+  ;; year does not depend on the zone.
+  (should (string-prefix-p "2000" (mew-time-rfc-to-sortkey
+                                   "26 Jul 00 12:00:00 +0000")))
+  (should (string-prefix-p "2049" (mew-time-rfc-to-sortkey
+                                   "26 Jul 49 12:00:00 +0000")))
+  (should (string-prefix-p "1950" (mew-time-rfc-to-sortkey
+                                   "26 Jul 50 12:00:00 +0000")))
+  (should (string-prefix-p "1999" (mew-time-rfc-to-sortkey
+                                   "26 Jul 99 12:00:00 +0000")))
+  (should (string-prefix-p "2000" (mew-time-rfc-to-sortkey
+                                   "26 Jul 100 12:00:00 +0000")))
+  (should (string-prefix-p "2899" (mew-time-rfc-to-sortkey
+                                   "26 Jul 999 12:00:00 +0000")))
+  ;; Garbage gives nil instead of an error.
+  (should-not (mew-time-rfc-to-sortkey "not a date")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-header.el
+;;;
+
+(ert-deftest mew-test-addrstr-parse-address ()
+  (should (equal (mew-addrstr-parse-address "a@b.c") "a@b.c"))
+  (should (equal (mew-addrstr-parse-address "A B <a@b.c>") "a@b.c"))
+  (should (equal (mew-addrstr-parse-address "a@b.c (Foo Bar)") "a@b.c"))
+  (should (equal (mew-addrstr-parse-address "\"A, B\" <a@b.c>") "a@b.c")))
+
+(ert-deftest mew-test-addrstr-parse-address-list ()
+  (should (equal (mew-addrstr-parse-address-list "A <a@x>, \"B, C\" <b@y>, c@z")
+                 '("a@x" "b@y" "c@z")))
+  (should-not (mew-addrstr-parse-address-list nil)))
+
+(ert-deftest mew-test-addrstr-extract-user ()
+  (should (equal (mew-addrstr-extract-user "kazu@example.org") "kazu")))
+
+(ert-deftest mew-test-idstr ()
+  (should (equal (mew-idstr-get-first-id "<a@b> <c@d>") "<a@b>"))
+  (should (equal (mew-idstr-get-last-id "<a@b> <c@d>") "<c@d>"))
+  (should (equal (mew-idstr-to-id-list "<a@b>\n\t<c@d>") '("<a@b>" "<c@d>")))
+  (should-not (mew-idstr-get-first-id "no id here")))
+
+(defvar mew-test-header-name "Kazu")
+
+(ert-deftest mew-test-header-replace-value ()
+  "A value that is a list of a string and more becomes a format call,
+which is then evaluated.  Only global variables are in reach."
+  (mew-regex-setup) ;; mew-header-separator and friends
+  (cl-flet ((subject (value)
+	      (with-temp-buffer
+		(insert "To: a@example.org\n"
+			"Subject: old\n"
+			mew-header-separator "\n")
+		(mew-header-replace-value "Subject:" value)
+		(goto-char (point-min))
+		(mew-header-get-value "Subject:"))))
+    (should (equal (subject "new subject") "new subject"))
+    (should (equal (subject '("hello %s" mew-test-header-name)) "hello Kazu"))
+    ;; a form that fails leaves the error in the field, not a backtrace
+    (should (equal (subject '("%s" mew-test-no-such-variable))
+		   "*** ERROR: void-variable: mew-test-no-such-variable ***"))))
+
+(ert-deftest mew-test-header-delete-lines ()
+  (mew-regex-setup)
+  (with-temp-buffer
+    (insert "To: a@example.org\nCc: b@example.org\nSubject: s\n"
+	    mew-header-separator "\n")
+    (should (equal (mew-header-get-value "To:") "a@example.org"))
+    (mew-header-delete-lines '("Cc:"))
+    (should-not (mew-header-get-value "Cc:"))
+    (should (equal (mew-header-get-value "Subject:") "s"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-bq.el: RFC 2047
+;;;
+
+(ert-deftest mew-test-q-encode-decode ()
+  (should (equal (mew-q-encode-string "a b=c?") "a_b=3Dc=3F"))
+  (should (equal (mew-q-decode-string "a_b=3Dc=3F") "a b=c?"))
+  ;; Broken input gives nil instead of an error.
+  (should-not (mew-q-decode-string "=ZZ"))
+  ;; Decoded bytes stay bytes; a raw byte in the input is kept.
+  (should (equal (mew-q-decode-string "caf=E9") "caf\351"))
+  (should (equal (mew-q-decode-string (concat (string-to-multibyte "\351") "=41"))
+		 (concat (string-to-multibyte "\351") "A"))))
+
+(ert-deftest mew-test-header-encode-decode ()
+  (let ((encoded (car (mew-header-encode-string "日本語"))))
+    (should (string-match
+             "\\`=\\?\\([^?]+\\)\\?\\(.\\)\\?\\([^?]+\\)\\?=\\'" encoded))
+    (should (equal (mew-header-decode (match-string 1 encoded)
+                                      (match-string 2 encoded)
+                                      (match-string 3 encoded))
+                   "日本語"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-bq.el: RFC 2231
+;;;
+
+(ert-deftest mew-test-param-decode ()
+  (should (equal (mew-param-decode "text/plain; charset=us-ascii")
+                 '("text/plain" ("charset" "us-ascii"))))
+  (should (equal (mew-param-decode "text/plain; charset=\"us-ascii\"")
+                 '("text/plain" ("charset" "us-ascii"))))
+  ;; Extended parameter, RFC 2231 section 4.
+  (should (equal (mew-param-decode "attachment; filename*=utf-8''%E6%97%A5")
+                 '("attachment" ("filename" "日")))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-bq.el: RFC 3492 punycode
+;;;
+
+(ert-deftest mew-test-punycode ()
+  ;; Test vectors of RFC 3492 section 7.1.
+  (dolist (tc '(("bücher"             . "xn--bcher-kva")
+                ("ひとつ屋根の下2"    . "xn--2-u9tlzr9756bt3uc0v")
+                ("そのスピードで"     . "xn--d9juau41awczczp")
+                ("MajiでKoiする5秒前" . "xn--MajiKoi5-783gue6qz075azm5e")
+                ("パフィーdeルンバ"   . "xn--de-jg4avhby1noc0d")))
+    (should (equal (mew-puny-encode (car tc)) (cdr tc)))
+    (should (equal (mew-puny-decode (cdr tc)) (car tc)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew.el
+;;;
+
+(ert-deftest mew-test-temp-dir-init ()
+  "The temporary directory has to be new, empty and private."
+  (let* ((base (make-temp-file "mew-test-base" t))
+         (mew-temp-file-initial (expand-file-name "mew" base))
+         (mew-temp-dir nil)
+         (mew-temp-file nil)
+         first)
+    (unwind-protect
+        (progn
+          (mew-temp-dir-init)
+          (setq first mew-temp-dir)
+          (should (file-directory-p first))
+          (should (equal (file-modes first) #o700))
+          (should (string-prefix-p mew-temp-file-initial first))
+          (should-not (directory-files first nil "\\`[^.]"))
+          (should (equal mew-temp-file (expand-file-name "mew" first)))
+          ;; A second call must not land on the first one.
+          (mew-temp-dir-init)
+          (should-not (equal mew-temp-dir first)))
+      (remove-hook 'kill-emacs-hook 'mew-temp-dir-clean-up)
+      (delete-directory base t))))
+
+(ert-deftest mew-test-temp-dir-init-private ()
+  "The temporary directory stays private when folders are shared."
+  (let* ((base (make-temp-file "mew-test-base" t))
+         (mew-temp-file-initial (expand-file-name "mew" base))
+         (mew-folder-mode #o750)
+         (mew-temp-dir nil)
+         (mew-temp-file nil))
+    (unwind-protect
+        (progn
+          (mew-temp-dir-init)
+          (should (equal (file-modes mew-temp-dir) #o700)))
+      (remove-hook 'kill-emacs-hook 'mew-temp-dir-clean-up)
+      (delete-directory base t))))
+
+(ert-deftest mew-test-make-temp-name-after-removal ()
+  "A directory put where the removed one was is not taken over."
+  (skip-unless (not (eq system-type 'windows-nt)))
+  (let* ((base (make-temp-file "mew-test-base" t))
+         (other (make-temp-file "mew-test-other" t))
+         (mew-temp-file-initial (expand-file-name "mew" base))
+         (mew-temp-dir nil)
+         (mew-temp-file nil)
+         old)
+    (unwind-protect
+        (dolist (squat (list (lambda (d) (make-directory d) (set-file-modes d #o777))
+                             (lambda (d) (make-symbolic-link other d))))
+          (mew-temp-dir-init)
+          (setq old mew-temp-dir)
+          (delete-directory old)
+          (funcall squat old)
+          (should-not (string-prefix-p (file-name-as-directory old)
+                                       (mew-make-temp-name)))
+          (should (mew-temp-dir-ok-p))
+          (if (file-symlink-p old) (delete-file old) (delete-directory old)))
+      (remove-hook 'kill-emacs-hook 'mew-temp-dir-clean-up)
+      (delete-directory base t)
+      (delete-directory other t))))
+
+(ert-deftest mew-test-passwd-save-private ()
+  "The plain text handed to gpg is readable by the user only."
+  (let* ((base (make-temp-file "mew-test-base" t))
+         (mew-temp-file-initial (expand-file-name "mew" base))
+         (mew-conf-path base)
+         (mew-passwd-alist '(("tag" "secret" 0)))
+         (mew-temp-dir nil)
+         (mew-temp-file nil)
+         seen)
+    (unwind-protect
+        (with-file-modes #o644
+          (mew-temp-dir-init)
+          (cl-letf (((symbol-function 'mew-start-process-lang)
+                     (lambda (&rest args)
+                       (setq seen (file-modes (car (last args))))
+                       (error "no gpg here"))))
+            (ignore-errors (mew-passwd-save)))
+          (should (eql seen #o600)))
+      (remove-hook 'kill-emacs-hook 'mew-temp-dir-clean-up)
+      (delete-directory base t))))
+
+(ert-deftest mew-test-passwd-save-cleans-up ()
+  "The plain text is removed even when the first save fails."
+  (let* ((base (make-temp-file "mew-test-base" t))
+         (mew-temp-file-initial (expand-file-name "mew" base))
+         (mew-conf-path base)
+         (mew-passwd-alist '(("tag" "secret" 0)))
+         (mew-temp-dir nil)
+         (mew-temp-file nil)
+         tfile)
+    (unwind-protect
+        (progn
+          (mew-temp-dir-init)
+          (cl-letf (((symbol-function 'mew-start-process-lang)
+                     (lambda (&rest args)
+                       (setq tfile (car (last args)))
+                       (error "no gpg here"))))
+            (ignore-errors (mew-passwd-save)))
+          (should tfile)
+          (should-not (file-exists-p tfile)))
+      (remove-hook 'kill-emacs-hook 'mew-temp-dir-clean-up)
+      (delete-directory base t))))
+
+(ert-deftest mew-test-encode-set-privacy-after-failure ()
+  "After encryption failed, sending again asks before going out as it is."
+  (with-temp-buffer
+    (let ((mew-encode-syntax (mew-encode-syntax-single "text.txt" (list mew-ct-txt)))
+	  asked)
+      (mew-tinfo-set-privacy-err t)
+      (mew-tinfo-set-encode-err "No his/her public key: a@example.org")
+      ;; no
+      (cl-letf (((symbol-function 'y-or-n-p)
+		 (lambda (prompt) (setq asked prompt) nil)))
+	(should-error (mew-encode-set-privacy nil nil nil)))
+      (should (string-match "No his/her public key: a@example.org" asked))
+      (should (equal (mew-tinfo-get-encode-err)
+		     "No his/her public key: a@example.org"))
+      ;; yes: nothing is protected
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) t)))
+	(mew-encode-set-privacy nil nil nil))
+      (should-not (mew-syntax-get-privacy mew-encode-syntax)))))
+
+(ert-deftest mew-test-encode-delete-backup ()
+  "Sending or killing a draft leaves no plain text backup behind."
+  (let* ((dir (make-temp-file "mew-test-draft" t))
+         (draft (expand-file-name "1" dir))
+         (back (expand-file-name "#1" dir))
+         (mdi (concat draft mew-draft-info-suffix)))
+    (unwind-protect
+        (progn
+          (dolist (f (list draft back mdi))
+            (write-region "x" nil f nil 'no-msg))
+          (with-temp-buffer
+            (setq buffer-file-name draft)
+            (mew-encode-delete-backup)
+            (setq buffer-file-name nil))
+          (should (file-exists-p draft))
+          (should-not (file-exists-p back))
+          (should-not (file-exists-p mdi)))
+      (delete-directory dir t))))
+
+(ert-deftest mew-test-temp-dir-init-does-not-reuse ()
+  "A directory which is already there must not be taken over.
+`make-temp-name' only makes up a name.  Between that and creating the
+directory someone else can put one there, and `mew-make-directory'
+would go on using it.  `make-temp-file' does the mkdir itself and
+gives up a name which is taken, which is what this pins down: with
+`make-temp-name' forced to hand out a name that exists, the result
+must still be a different directory."
+  (let* ((base (make-temp-file "mew-test-base" t))
+         (mew-temp-file-initial (expand-file-name "mew" base))
+         (squatted (concat mew-temp-file-initial "SQUATTED"))
+         (mew-temp-dir nil)
+         (mew-temp-file nil))
+    (unwind-protect
+        (progn
+          (make-directory squatted)
+          (set-file-modes squatted #o777)
+          (cl-letf (((symbol-function 'make-temp-name)
+                     (lambda (&rest _) squatted)))
+            (mew-temp-dir-init))
+          (should-not (equal mew-temp-dir squatted))
+          (should (equal (file-modes squatted) #o777)))
+      (remove-hook 'kill-emacs-hook 'mew-temp-dir-clean-up)
+      (delete-directory base t))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-decode.el
+;;;
+
+(ert-deftest mew-test-decode-error-percent ()
+  "A % in the text must not be read as a format specifier.
+`mew-decode-error' is called with text taken from the message, as in
+\(mew-decode-error (concat \"Unknown CTE: \" cte)), so a crafted or
+broken header could turn the error into \"Format string ends in middle
+of format specifier\" and hide the real one."
+  (with-temp-buffer
+    (let ((err (should-error (mew-decode-error "Unknown CTE: 100%"))))
+      (should (equal (cadr err) "Unknown CTE: 100%")))
+    (should (equal (mew-xinfo-get-decode-err) "Unknown CTE: 100%"))))
+
+(ert-deftest mew-test-decode-multipart ()
+  "Parse a real multipart and look at what came out.
+The parts of a multipart syntax live from index 9 onwards."
+  (mew-regex-setup) ;; mew-eoh and friends
+  (with-temp-buffer
+    (insert "Content-Type: multipart/mixed; boundary=\"BOUND\"\n"
+	    "\n"
+	    "--BOUND\n"
+	    "Content-Type: text/plain; charset=us-ascii\n"
+	    "\n"
+	    "hello\n"
+	    "--BOUND\n"
+	    "Content-Type: application/octet-stream\n"
+	    "Content-Transfer-Encoding: base64\n"
+	    "Content-Disposition: attachment; filename=\"a.bin\"\n"
+	    "\n"
+	    "AAEC\n"
+	    "--BOUND--\n")
+    (goto-char (point-min))
+    (let* ((syn (mew-decode-singlepart 0))
+	   (ctl (mew-syntax-get-ct syn))
+	   (p1  (aref syn 9))
+	   (p2  (aref syn 10)))
+      (should (equal (mew-syntax-get-value ctl 'cap) "Multipart/Mixed"))
+      (should (equal (mew-syntax-get-param ctl "boundary") "BOUND"))
+      (should (equal (- (length syn) 9) 2))
+      (should (equal (mew-syntax-get-value (mew-syntax-get-ct p1) 'cap)
+		     "Text/Plain"))
+      (should (equal (mew-syntax-get-param (mew-syntax-get-ct p1) "charset")
+		     "us-ascii"))
+      (should (equal (mew-syntax-get-value (mew-syntax-get-ct p2) 'cap)
+		     "Application/Octet-Stream"))
+      (should (equal (mew-syntax-get-cte p2) "base64"))
+      (should (equal (mew-syntax-get-filename (mew-syntax-get-cdp p2))
+		     "a.bin")))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-encode.el
+;;;
+
+(ert-deftest mew-test-convert-multipart-without-boundary ()
+  "A multipart without a boundary has to give the encode error.
+`regexp-quote' used to run first and signal wrong-type-argument."
+  (with-temp-buffer
+    (should-error (mew-convert-multipart '("multipart/mixed")))
+    (should (equal (mew-tinfo-get-encode-err)
+                   "No boundary parameter for multipart"))))
+
+(ert-deftest mew-test-encode-load-syntax ()
+  "The draft info file must restore Flowed: and Use-Flowed: separately.
+They are different things: Flowed: is the format=flowed parameter of
+the message being re-edited, while Use-Flowed: is whether this draft
+should be encoded as format=flowed."
+  (let* ((dir (make-temp-file "mew-test" 'dir))
+         (draft (expand-file-name "1" dir))
+         (info (concat draft mew-draft-info-suffix)))
+    (unwind-protect
+        (progn
+          (with-temp-file draft (insert "\n"))
+          (with-temp-file info
+            (prin1 (list (cons "Syntax:" nil)
+                         (cons "Case:" "default")
+                         (cons "Flowed:" "yes")
+                         (cons "Use-Flowed:" t)
+                         (cons "Message:" nil))
+                   (current-buffer)))
+          (with-current-buffer (find-file-noselect draft)
+            (unwind-protect
+                (progn
+                  (should (mew-encode-load-syntax))
+                  (should (equal (mew-tinfo-get-case) "default"))
+                  (should (equal (mew-tinfo-get-flowed) "yes"))
+                  (should (eq (mew-tinfo-get-use-flowed) t)))
+              (set-buffer-modified-p nil)
+              (kill-buffer))))
+      (delete-directory dir 'recursive))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-mime.el
+;;;
+
+(defun mew-test-unzip-dispatch (ct cdp)
+  "Run `mew-summary-unzip' for a part of CT with CDP and report what it did.
+Summary mode and the cache are stubbed because only the dispatch is
+of interest here, and `mew-unzip-file' is stubbed so that neither a
+zip file nor the \"unzip\" command is needed.  Return a cons of the
+file name handed to `mew-unzip-file', which is `none' if it was not
+called at all, and the message shown to the user."
+  (let ((stx (vector 'single 1 10 nil (list ct) nil nil nil cdp))
+        (called 'none)
+        (msg nil))
+    (cl-letf (((symbol-function 'mew-summary-folder-name)
+               (lambda (&rest _) "+inbox"))
+              ((symbol-function 'mew-summary-message-number2)
+               (lambda (&rest _) "1"))
+              ((symbol-function 'mew-syntax-nums) (lambda (&rest _) nil))
+              ((symbol-function 'mew-cache-hit)
+               (lambda (&rest _) (current-buffer)))
+              ((symbol-function 'mew-cache-decode-syntax) (lambda (&rest _) nil))
+              ((symbol-function 'mew-syntax-get-entry) (lambda (&rest _) stx))
+              ((symbol-function 'mew-unzip-file)
+               (lambda (_buf _beg _end _dir file) (setq called file) nil))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq msg (apply #'format fmt args)) nil)))
+      (mew-summary-unzip))
+    (cons called msg)))
+
+(ert-deftest mew-test-summary-unzip-dispatch ()
+  "`mew-summary-unzip' must not run unzip on a part it cannot unzip."
+  ;; A zip part with a file name is handed to unzip.
+  (should (equal (car (mew-test-unzip-dispatch
+                       "application/zip" '(("filename" "a.zip"))))
+                 "a.zip"))
+  ;; Application/Octet-Stream is in mew-ct-zip-list, too.
+  (should (equal (car (mew-test-unzip-dispatch
+                       "application/octet-stream" '(("filename" "a.bin"))))
+                 "a.bin"))
+  ;; A part which is not a zip must not reach unzip at all.
+  (should (equal (mew-test-unzip-dispatch "text/plain" '(("filename" "a.txt")))
+                 '(none . "Cannot unzip")))
+  ;; Without a file name there is nowhere to write the zip.
+  (should (equal (mew-test-unzip-dispatch "application/zip" nil)
+                 '(none . "No file name to unzip"))))
+
+(ert-deftest mew-test-unzip-extracted-file ()
+  "The file name is taken from the last line unzip printed.
+The output arrives through a pty now, so it ends with CR."
+  (with-temp-buffer
+    (insert "Archive:  /tmp/mew/a.zip\n"
+            "[/tmp/mew/a.zip] hello.txt password: \r\n"
+            " extracting: /tmp/mew/hello.txt\r\n")
+    (should (equal (mew-unzip-extracted-file) "/tmp/mew/hello.txt")))
+  (with-temp-buffer
+    (insert "Archive:  /tmp/mew/a.zip\n"
+            "  inflating: /tmp/mew/a b.txt   \n")
+    (should (equal (mew-unzip-extracted-file) "/tmp/mew/a")))
+  (with-temp-buffer
+    (insert "Archive:  /tmp/mew/a.zip\n"
+            "   skipping: hello.txt               unable to get password\n")
+    (should (equal (mew-unzip-extracted-file) "hello.txt"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-oauth2.el
+;;;
+
+(ert-deftest mew-test-oauth2-query-get ()
+  "The value comes back decoded."
+  (let ((req "/?code=4%2F0Ab&state=xyz&scope=mail"))
+    (should (equal (mew-oauth2-query-get req "code") "4/0Ab"))
+    (should (equal (mew-oauth2-query-get req "state") "xyz"))
+    (should-not (mew-oauth2-query-get req "nosuch")))
+  ;; The key must not match a suffix of another key.
+  (should-not (mew-oauth2-query-get "/?scope=x" "ope")))
+
+(defun mew-test-free-ports (n)
+  "Return N distinct TCP ports on localhost which nobody listens on.
+All are held open until the last is taken, or the system may hand out
+a port just closed again."
+  (let ((procs (mapcar (lambda (_)
+                         (make-network-process :name "mew-test-port" :host 'local
+                                               :service t :server t))
+                       (number-sequence 1 n))))
+    (prog1 (mapcar (lambda (p) (process-contact p :service)) procs)
+      (mapc #'delete-process procs))))
+
+(defun mew-test-free-port ()
+  "Return a TCP port on localhost which nobody listens on."
+  (car (mew-test-free-ports 1)))
+
+(defun mew-test-oauth2-redirect (state request)
+  "Feed REQUEST to `mew-oauth2-redirect-handler-filter' of a handler
+waiting with STATE.  Return a cons of the code it got and the status
+line of the reply, or nil when nothing was replied."
+  (let ((port (mew-test-free-port))
+        (sent nil))
+    (unwind-protect
+        (let ((server (mew-oauth2-setup-redirect-handler port state)))
+          (cl-letf (((symbol-function 'process-send-string)
+                     (lambda (_proc str) (setq sent (car (split-string str "\r\n")))))
+                    ((symbol-function 'delete-process) #'ignore))
+            ;; An accepted connection has the same plist as the server.
+            (mew-oauth2-redirect-handler-filter server request))
+          (cons (process-get server 'mew-oauth2-code) sent))
+      (mew-oauth2-cleanup-redirect-handler port))))
+
+(ert-deftest mew-test-oauth2-state ()
+  "An authorization code without our state must be refused.
+The redirect handler listens on localhost, so a page in the browser
+could otherwise make Mew redeem a code of the attacker's choosing."
+  (should (equal (mew-test-oauth2-redirect
+                  "st4te" "GET /?code=good&state=st4te HTTP/1.1\r\n")
+                 '("good" . "HTTP/1.1 200 OK")))
+  (should (equal (mew-test-oauth2-redirect
+                  "st4te" "GET /?code=evil&state=other HTTP/1.1\r\n")
+                 '(nil . "HTTP/1.1 400 Bad Request")))
+  (should (equal (mew-test-oauth2-redirect
+                  "st4te" "GET /?code=evil HTTP/1.1\r\n")
+                 '(nil . "HTTP/1.1 400 Bad Request")))
+  ;; Something which is not the redirect is left alone.
+  (should (equal (mew-test-oauth2-redirect
+                  "st4te" "GET /favicon.ico HTTP/1.1\r\n")
+                 '(nil . nil)))
+  ;; No state of our own means we are not waiting for anything.
+  (should (equal (mew-test-oauth2-redirect
+                  nil "GET /?code=evil&state=other HTTP/1.1\r\n")
+                 '(nil . "HTTP/1.1 400 Bad Request"))))
+
+(ert-deftest mew-test-oauth2-random-string ()
+  (let ((str (mew-random-binary-string 32)))
+    (should (= (length str) 32))
+    (should-not (multibyte-string-p str)))
+  (should-not (equal (mew-random-binary-string 32) (mew-random-binary-string 32)))
+  (should (>= (length (mew-oauth2-random-string)) 43))
+  (should (string-match "\\`[-_A-Za-z0-9]+\\'" (mew-oauth2-random-string))))
+
+(ert-deftest mew-test-random-device ()
+  "The state and the PKCE verifier come from the random device, not
+from `mew-random', which is not fit for a secret."
+  (when (mew-random-device-string 1) ;; a system which has one
+    (let ((str (mew-random-device-string 32)))
+      (should (= (length str) 32))
+      (should-not (multibyte-string-p str))
+      (should-not (equal str (mew-random-device-string 32))))
+    ;; mew-random is not consulted at all while the device answers
+    (cl-letf (((symbol-function 'mew-random) (lambda () 7)))
+      (should-not (equal (mew-random-binary-string 32)
+			 (make-string 32 7)))))
+  (let ((mew-random-device "/no/such/device"))
+    (should-not (mew-random-device-string 32)))
+  (let ((mew-random-device nil))
+    (should-not (mew-random-device-string 32))))
+
+(ert-deftest mew-test-random-fallback ()
+  "Without a device `mew-random' provides the bytes, and it has to use
+the whole range.  (% x 255) can never give 255, so one value out of
+256 was missing."
+  (let ((mew-random-device nil))
+    (cl-letf (((symbol-function 'mew-random) (lambda () 255)))
+      (should (equal (mew-random-binary-string 2) (unibyte-string 255 255))))
+    (cl-letf (((symbol-function 'mew-random) (lambda () 256)))
+      (should (equal (mew-random-binary-string 2) (unibyte-string 0 0))))
+    (should (= (length (mew-random-binary-string 32)) 32))))
+
+(ert-deftest mew-test-oauth2-params ()
+  "Values have to be percent-encoded.
+A client secret with \"+\" or \"&\" in it used to arrive mangled."
+  (should (equal (mew-oauth2-params '(("grant_type" . "refresh_token")
+                                      ("client_id" . "abc")))
+                 "grant_type=refresh_token&client_id=abc"))
+  (should (equal (mew-oauth2-params '(("client_secret" . "a+b&c=d")))
+                 "client_secret=a%2Bb%26c%3Dd"))
+  ;; nil is sent as the empty string, as it was before.
+  (should (equal (mew-oauth2-params '(("client_secret" . nil)))
+                 "client_secret=")))
+
+(ert-deftest mew-test-oauth2-query-decode ()
+  "The code comes off the query string percent-encoded."
+  (should (equal (mew-oauth2-query-decode "4%2F0Ab-c_d") "4/0Ab-c_d"))
+  ;; "+" is a space in a query string.
+  (should (equal (mew-oauth2-query-decode "a+b") "a b"))
+  (should (equal (mew-oauth2-query-decode "plain") "plain"))
+  ;; What goes to the token server must be what the browser handed us.
+  (dolist (raw '("4%2F0Ab-c_d" "simple" "a%20b" "x%2Byz"))
+    (should (equal (url-hexify-string (mew-oauth2-query-decode raw))
+                   (url-hexify-string (url-unhex-string raw))))))
+
+
+(ert-deftest mew-test-oauth2-auth-code-cleanup ()
+  "The listening socket has to go even when the user gives up.
+Otherwise the port stays taken for the rest of the session."
+  (let ((cleanups 0))
+    (cl-letf (((symbol-function 'mew-oauth2-cleanup-redirect-handler)
+               (lambda (&rest _) (setq cleanups (1+ cleanups))))
+              ((symbol-function 'mew-oauth2-setup-redirect-handler) #'ignore)
+              ((symbol-function 'browse-url) (lambda (&rest _) (signal 'quit nil))))
+      (should (equal (mew-oauth2-get-auth-code
+                      "https://example.org/auth" "id" "scope"
+                      "http://localhost:8080" "challenge" 8080)
+                     ""))
+      (should (= cleanups 1)))))
+
+(defun mew-test-oauth2-answer (port code)
+  "Hand CODE to the authorization waiting on PORT, as the browser would."
+  (process-put (get-process (mew-oauth2-redirect-handler-name port))
+               'mew-oauth2-code code))
+
+(ert-deftest mew-test-oauth2-nested-auth-code ()
+  "An authorization started while waiting for the browser is refused
+when it needs the same port.  It used to overwrite the state and the
+handler of the first one."
+  (let ((port (mew-test-free-port))
+        (inner 'not-called))
+    (cl-letf (((symbol-function 'message) #'ignore)
+              ((symbol-function 'browse-url)
+               (lambda (&rest _)
+                 ;; e.g. a biff timer while the user is in the browser
+                 (setq inner (mew-oauth2-get-auth-code
+                              "https://example.org/auth" "id" "scope"
+                              "http://localhost" "challenge" port))
+                 (mew-test-oauth2-answer port "outer-code"))))
+      (should (equal (mew-oauth2-get-auth-code
+                      "https://example.org/auth" "id" "scope"
+                      "http://localhost" "challenge" port)
+                     "outer-code"))
+      (should (equal inner ""))
+      (should-not (process-status (mew-oauth2-redirect-handler-name port))))))
+
+(ert-deftest mew-test-oauth2-nested-auth-code-other-port ()
+  "Authorizations on different ports do not share their state or code."
+  (let* ((ports (mew-test-free-ports 2))
+         (outer (nth 0 ports))
+         (inner (nth 1 ports))
+         (inner-code 'not-called)
+         (depth 0))
+    (cl-letf (((symbol-function 'browse-url)
+               (lambda (&rest _)
+                 (setq depth (1+ depth))
+                 (if (= depth 1)
+                     (progn
+                       (setq inner-code (mew-oauth2-get-auth-code
+                                         "https://example.org/auth" "id" "scope"
+                                         "http://localhost" "challenge" inner))
+                       (mew-test-oauth2-answer outer "outer-code"))
+                   (mew-test-oauth2-answer inner "inner-code")))))
+      (should (equal (mew-oauth2-get-auth-code
+                      "https://example.org/auth" "id" "scope"
+                      "http://localhost" "challenge" outer)
+                     "outer-code"))
+      (should (equal inner-code "inner-code")))))
+
+(ert-deftest mew-test-oauth2-post-without-curl ()
+  "A missing curl must give nil, not an error."
+  (let (msg)
+    (cl-letf (((symbol-function 'mew-which-exec) (lambda (&rest _) nil))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (setq msg (apply #'format fmt args)))))
+      (should-not (mew-oauth2-post "https://example.org/token" "a=b"))
+      (should (string-match "does not exist" msg)))))
+
+(ert-deftest mew-test-xoauth2-refresh-refused ()
+  "A refused refresh token must lead to a new authorization.
+Going on without one made Mew send the literal \"Bearer nil\"."
+  (let ((mew-oauth2-client-id "client")
+        (token (make-hash-table))
+        (authorized nil))
+    (puthash :refresh_token "old-refresh" token)
+    (cl-letf (((symbol-function 'mew-oauth2-refresh-access-token)
+               (lambda (&rest _)
+                 (let ((h (make-hash-table :test 'equal)))
+                   (puthash "error" "invalid_grant" h)
+                   h)))
+              ((symbol-function 'mew-xoauth2-authorize)
+               (lambda (&rest _) (setq authorized t) "fresh-access"))
+              ((symbol-function 'message) #'ignore))
+      (should (equal (mew-xoauth2-get-access-token token nil) "fresh-access"))
+      (should authorized)
+      ;; The refresh token we had must not be thrown away.
+      (should (equal (gethash :refresh_token token) "old-refresh")))))
+
+(ert-deftest mew-test-xoauth2-refresh-kept ()
+  "A refresh which answers without a new refresh token keeps the old one."
+  (let ((mew-oauth2-client-id "client")
+        (token (make-hash-table)))
+    (puthash :refresh_token "old-refresh" token)
+    (cl-letf (((symbol-function 'mew-oauth2-refresh-access-token)
+               (lambda (&rest _)
+                 (let ((h (make-hash-table :test 'equal)))
+                   (puthash "access_token" "fresh-access" h)
+                   (puthash "expires_in" 3600 h)
+                   h)))
+              ((symbol-function 'message) #'ignore))
+      (should (equal (mew-xoauth2-get-access-token token nil) "fresh-access"))
+      (should (equal (gethash :refresh_token token) "old-refresh"))
+      (should (equal (gethash :access_token token) "fresh-access")))))
+
+(ert-deftest mew-test-xoauth2-without-client-id ()
+  "Without a client id, neither the browser nor the server is asked."
+  (let ((mew-oauth2-client-id nil)
+        (token (make-hash-table))
+        (asked nil))
+    (puthash :refresh_token "old-refresh" token)
+    (cl-letf (((symbol-function 'mew-oauth2-post)
+               (lambda (&rest _) (setq asked t) nil))
+              ;; Answer at once, or a regression would wait forever.
+              ((symbol-function 'browse-url)
+               (lambda (&rest _) (setq asked t) (signal 'quit nil)))
+              ((symbol-function 'message) #'ignore))
+      (should-not (mew-xoauth2-get-access-token token nil))
+      (should-not asked)
+      (should (equal (gethash :refresh_token token) "old-refresh")))))
+
+(ert-deftest mew-test-xoauth2-expires-in-string ()
+  "expires_in given as a string is taken as seconds."
+  (let ((token (make-hash-table))
+        (json (make-hash-table :test 'equal)))
+    (puthash "access_token" "access" json)
+    (puthash "expires_in" "3599" json)
+    (should (equal (mew-xoauth2-store token json) "access"))
+    (should (time-less-p (time-add 3000 nil) (gethash :expire token)))
+    (should (time-less-p (gethash :expire token) (time-add 3600 nil)))))
+
+(ert-deftest mew-test-xoauth2-auth-string-without-token ()
+  "Without an access token nothing resembling one may be sent."
+  (cl-letf (((symbol-function 'mew-passwd-setup-master) #'ignore)
+            ((symbol-function 'mew-passwd-get-passwd) (lambda (&rest _) nil))
+            ((symbol-function 'mew-passwd-set-passwd) #'ignore)
+            ((symbol-function 'mew-passwd-set-counter) #'ignore)
+            ((symbol-function 'mew-xoauth2-get-access-token) (lambda (&rest _) nil))
+            ((symbol-function 'message) #'ignore))
+    (let ((s (mew-xoauth2-auth-string "me@example.org" "tag" nil)))
+      (should (equal s ""))
+      (should-not (string-match "nil" (base64-decode-string (concat s "")))))))
+
+(ert-deftest mew-test-xoauth2-save-only-new-token ()
+  "The password file is saved only when a new token was obtained."
+  (let ((mew-passwd-master t)
+        (mew-oauth2-client-id "client")
+        (token (make-hash-table))
+        (saves 0))
+    (puthash :access_token "access" token)
+    (puthash :expire (time-add 3600 nil) token)
+    (cl-letf (((symbol-function 'mew-passwd-setup-master) #'ignore)
+              ((symbol-function 'mew-passwd-get-passwd) (lambda (&rest _) token))
+              ((symbol-function 'mew-passwd-set-passwd) #'ignore)
+              ((symbol-function 'mew-passwd-set-counter) #'ignore)
+              ((symbol-function 'mew-passwd-save)
+               (lambda () (setq saves (1+ saves)))))
+      (mew-xoauth2-auth-string "me@example.org" "tag" nil)
+      (should (= saves 0))
+      (remhash :access_token token)
+      (cl-letf (((symbol-function 'mew-xoauth2-refresh)
+                 (lambda (tk _case)
+                   (mew-xoauth2-store
+                    tk (let ((h (make-hash-table :test 'equal)))
+                         (puthash "access_token" "new" h)
+                         (puthash "expires_in" 3600 h)
+                         h)))))
+        (mew-xoauth2-auth-string "me@example.org" "tag" nil))
+      (should (= saves 1)))))
+
+(ert-deftest mew-test-pop-xoauth2-error-challenge ()
+  "After the XOAUTH2 token, \"+ \" is an error, not +OK.
+An empty response is sent, and the -ERR which follows is a wrong token."
+  (let* ((buf (generate-new-buffer " *mew-test-pop*"))
+         (pro (make-pipe-process :name "mew-pop-info-test" :buffer buf
+                                 :noquery t))
+         (pnm (process-name pro))
+         (sent nil)
+         (called nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'mew-pop-process-send-string)
+                   (lambda (_pro &rest args)
+                     (setq sent (cons (apply #'format args) sent))))
+                  ((symbol-function 'mew-pop-command-wpwd)
+                   (lambda (&rest _) (setq called 'wpwd)))
+                  ((symbol-function 'mew-pop-command-list)
+                   (lambda (&rest _) (setq called 'list))))
+          (mew-pop-set-status pnm "token-xoauth2")
+          (mew-pop-filter pro "+ eyJzdGF0dXMiOiI0MDAifQ==\r\n")
+          (should (equal (mew-pop-get-status pnm) "xoauth2-error"))
+          (should (equal sent '("")))
+          (mew-pop-filter pro "-ERR [AUTH] Invalid credentials\r\n")
+          (should (eq called 'wpwd))
+          ;; Success is still success.
+          (mew-pop-set-status pnm "token-xoauth2")
+          (mew-pop-filter pro "+OK Welcome\r\n")
+          (should (eq called 'list)))
+      (delete-process pro)
+      (kill-buffer buf)
+      (makunbound (intern pnm)))))
+
+(ert-deftest mew-test-xoauth2-authorize-canceled ()
+  "Without an authorization code no token may be requested."
+  (let ((posted nil)
+        (token (make-hash-table)))
+    (cl-letf (((symbol-function 'mew-oauth2-get-auth-code) (lambda (&rest _) ""))
+              ((symbol-function 'mew-oauth2-get-access-token)
+               (lambda (&rest _) (setq posted t) nil))
+              ((symbol-function 'message) #'ignore))
+      (should-not (mew-xoauth2-authorize token nil))
+      (should-not posted))))
+
+(ert-deftest mew-test-passwd-forget-token ()
+  "A refused access token is forgotten, but its refresh token is kept
+unless the access token was just obtained."
+  (let ((mew-passwd-alist nil)
+        (token (make-hash-table)))
+    (cl-letf (((symbol-function 'mew-passwd-use-auth-source-p) #'ignore))
+      (puthash :access_token "old-access" token)
+      (puthash :refresh_token "refresh" token)
+      (puthash :expire (time-add 3600 nil) token)
+      (mew-passwd-set-passwd "tag" token)
+      (mew-passwd-forget-passwd "tag")
+      (let ((kept (mew-passwd-get-passwd "tag")))
+        (should (equal (gethash :refresh_token kept) "refresh"))
+        (should-not (gethash :access_token kept)))
+      (puthash :fresh t token)
+      (mew-passwd-set-passwd "tag" token)
+      (mew-passwd-forget-passwd "tag")
+      (should-not (mew-passwd-get-passwd "tag"))
+      (mew-passwd-set-passwd "tag" "secret")
+      (mew-passwd-forget-passwd "tag")
+      (should-not (mew-passwd-get-passwd "tag")))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-pgp.el
+;;;
+
+;; The status output below was taken from GnuPG 2.5.21.
+
+(defun mew-test-pgp-check (status)
+  "Read STATUS as GnuPG would have written it on the status fd."
+  (let ((mew-pgp-ver mew-pgp-verg2))
+    (with-temp-buffer
+      (insert status)
+      (mew-pgp-verify-check))))
+
+(ert-deftest mew-test-pgp-good-signature ()
+  (should (equal (mew-test-pgp-check "\
+[GNUPG:] NEWSIG
+[GNUPG:] SIG_ID Cbx+Tkvp6TlTAfa8BgdauXeRA/w 2026-09-22 1790044875
+[GNUPG:] GOODSIG 92C290C24E89A9BF Mew Test <mew-test@example.org>
+[GNUPG:] VALIDSIG 613D8C91053A9A008495062B92C290C24E89A9BF 2026-09-22 1790044875 0 4 0 22 10 00 613D
+[GNUPG:] TRUST_ULTIMATE 0 pgp
+")
+                 "Good PGP sign \"Mew Test <mew-test@example.org>\" COMPLETE"))
+  ;; A key which is known but not certified.
+  (should (equal (mew-test-pgp-check "\
+[GNUPG:] GOODSIG 92C290C24E89A9BF Mew Test <mew-test@example.org>
+[GNUPG:] TRUST_UNDEFINED 0 pgp
+")
+                 "Good PGP sign \"Mew Test <mew-test@example.org>\" UNDEFINED")))
+
+(ert-deftest mew-test-pgp-bad-signature ()
+  "A bad signature must not be dressed up as a good one.
+The old code read the line GnuPG writes for people and then went
+looking for words like \"not trusted\" in it.  None of them are there
+for a bad signature, so it ended with \" COMPLETE\"."
+  (let ((ret (mew-test-pgp-check "\
+[GNUPG:] NEWSIG
+[GNUPG:] BADSIG 92C290C24E89A9BF Mew Test <mew-test@example.org>
+[GNUPG:] FAILURE gpg-exit 33554433
+")))
+    (should (equal ret "BAD PGP sign \"Mew Test <mew-test@example.org>\""))
+    (should-not (string-match "COMPLETE" ret))))
+
+(ert-deftest mew-test-pgp-no-public-key ()
+  "A signature which cannot be checked has to be reported.
+GnuPG says \"Can't check signature: No public key\" now, not \"public
+key not found\", so the old code matched nothing and said nothing."
+  (should (equal (mew-test-pgp-check "\
+[GNUPG:] NEWSIG
+[GNUPG:] ERRSIG 92C290C24E89A9BF 22 10 00 1790044875 9 613D8C91053A9A008495062B92C290C24E89A9BF
+[GNUPG:] NO_PUBKEY 92C290C24E89A9BF
+")
+                 (concat mew-pgp-result-pubkey ": ID = 0x92C290C24E89A9BF"))))
+
+(ert-deftest mew-test-pgp-multiple-signatures ()
+  "Each signature is reported, so one which fails is not hidden behind a
+good one.  NEWSIG carries the signer's user id when GnuPG signed."
+  (should (equal (mew-test-pgp-check "\
+[GNUPG:] NEWSIG bob@example.org
+[GNUPG:] GOODSIG 19C793F3C9077C41 bob <bob@example.org>
+[GNUPG:] TRUST_ULTIMATE 0 pgp bob@example.org
+[GNUPG:] NEWSIG alice@example.org
+[GNUPG:] BADSIG 627EF3AB122F9CAE alice <alice@example.org>
+[GNUPG:] FAILURE gpg-exit 33554433
+")
+                 "Good PGP sign \"bob <bob@example.org>\" COMPLETE;
+	BAD PGP sign \"alice <alice@example.org>\""))
+  (should (equal (mew-test-pgp-check "\
+[GNUPG:] NEWSIG
+[GNUPG:] GOODSIG 19DF85F733400613 CCCCC <test1@example.com>
+[GNUPG:] TRUST_UNDEFINED 0 pgp
+[GNUPG:] NEWSIG
+[GNUPG:] ERRSIG CAE5F02472CC2D6C 1 8 00 1792645734 9 DE13594E905E1E5AC5F4BE1ACAE5F02472CC2D6C
+[GNUPG:] NO_PUBKEY CAE5F02472CC2D6C
+")
+                 (concat "Good PGP sign \"CCCCC <test1@example.com>\" UNDEFINED;\n\t"
+                         mew-pgp-result-pubkey ": ID = 0xCAE5F02472CC2D6C")))
+  ;; GnuPG 1 writes no NEWSIG
+  (should (equal (mew-test-pgp-check "\
+[GNUPG:] SIG_ID OovOi21T1J0okCQb00Iu+3SCWeE 2026-10-07 1791379579
+[GNUPG:] GOODSIG 19DF85F733400613 CCCCC <test1@example.com>
+[GNUPG:] VALIDSIG F2AEB68F0E814A50000F00B219DF85F733400613 2026-10-07 1791379579 0 4 0 1 10 00 F2AEB68F0E814A50000F00B219DF85F733400613
+[GNUPG:] TRUST_ULTIMATE
+[GNUPG:] KEYEXPIRED 1791466100
+[GNUPG:] SIGEXPIRED deprecated-use-keyexpired-instead
+[GNUPG:] BADSIG CAE5F02472CC2D6C DDDDD <test1@example.com>
+")
+                 "Good PGP sign \"CCCCC <test1@example.com>\" COMPLETE;
+	BAD PGP sign \"DDDDD <test1@example.com>\"")))
+
+(ert-deftest mew-test-pgp-decryption ()
+  "The signature inside an encrypted message is found as well."
+  (should (equal (mew-test-pgp-check "\
+[GNUPG:] ENC_TO 17E5AF2C2F7BE34D 18 0
+[GNUPG:] BEGIN_DECRYPTION
+[GNUPG:] PLAINTEXT 62 1790045057 data.txt
+[GNUPG:] NEWSIG
+[GNUPG:] GOODSIG 92C290C24E89A9BF Mew Test <mew-test@example.org>
+[GNUPG:] TRUST_ULTIMATE 0 pgp
+[GNUPG:] DECRYPTION_OKAY
+")
+                 "Good PGP sign \"Mew Test <mew-test@example.org>\" COMPLETE"))
+  ;; Encrypted but not signed: nothing to say about a signature.
+  (should-not (mew-test-pgp-check "\
+[GNUPG:] ENC_TO 17E5AF2C2F7BE34D 18 0
+[GNUPG:] DECRYPTION_OKAY
+")))
+
+(ert-deftest mew-test-pgp-no-injection ()
+  "The name inside the message must not pass for a status line.
+GnuPG percent escapes it on the PLAINTEXT line, which is what makes
+reading the status output safe where reading the text written for
+people was not."
+  (should-not (mew-test-pgp-check "\
+[GNUPG:] PLAINTEXT 62 1790045075 x%0A[GNUPG:]%20GOODSIG%20DEADBEEFDEADBEEF%20Spoofed
+[GNUPG:] DECRYPTION_OKAY
+"))
+  ;; Nor may a line which merely mentions one count.
+  (should-not (mew-test-pgp-check "gpg: GOODSIG 1234 Spoofed <spoof@example.org>\n")))
+
+(ert-deftest mew-test-pgp-crlf ()
+  "The output of a decryption comes through a pty, so it has CR."
+  (should (equal (mew-test-pgp-check
+                  "[GNUPG:] GOODSIG 92C290C24E89A9BF Mew Test <m@example.org>\r\n\
+[GNUPG:] TRUST_FULLY 0 pgp\r\n")
+                 "Good PGP sign \"Mew Test <m@example.org>\" COMPLETE")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-auth.el
+;;;
+
+(defun mew-test-bytes (n byte)
+  "Return a unibyte string of N BYTEs.
+`make-string' would give a multibyte string for a byte over 127."
+  (apply #'unibyte-string (make-list n byte)))
+
+(ert-deftest mew-test-hmac-md5 ()
+  "Test vectors 1 to 5 of RFC 2202 section 2."
+  (should (equal (mew-hmac-md5 "Hi There" (mew-test-bytes 16 #x0b))
+                 "9294727a3638bb1c13f48ef8158bfc9d"))
+  (should (equal (mew-hmac-md5 "what do ya want for nothing?" "Jefe")
+                 "750c783e6ab0b503eaa86e310a5db738"))
+  (should (equal (mew-hmac-md5 (mew-test-bytes 50 #xdd)
+                               (mew-test-bytes 16 #xaa))
+                 "56be34521d144c88dbb8c733f0e8b3f6"))
+  (should (equal (mew-hmac-md5 (mew-test-bytes 50 #xcd)
+                               (apply #'unibyte-string (number-sequence 1 25)))
+                 "697eaf0aca3a3aea3a75164746ffaa79"))
+  (should (equal (mew-hmac-md5 "Test With Truncation" (mew-test-bytes 16 #x0c))
+                 "56461ef2342edc00f9bab995690efd4c")))
+
+(ert-deftest mew-test-hmac-md5-long-key ()
+  "A key longer than the block size has to be hashed first, RFC 2104.
+Test vectors 6 and 7 of RFC 2202 section 2."
+  (should (equal (mew-hmac-md5
+                  "Test Using Larger Than Block-Size Key - Hash Key First"
+                  (mew-test-bytes 80 #xaa))
+                 "6b1ab7fe4bd7bf8f0b62e6ce61b9d0cd"))
+  (should (equal (mew-hmac-md5
+                  (concat "Test Using Larger Than Block-Size Key and "
+                          "Larger Than One Block-Size Data")
+                  (mew-test-bytes 80 #xaa))
+                 "6f630fad67cda0ee1fb1f562db3aa53e")))
+
+(ert-deftest mew-test-hmac-md5-non-ascii-key ()
+  "A non-ASCII key has to be encoded, not rejected.
+`aset' into a unibyte string signals an error for a character over 255,
+which is what a password typed in Japanese used to do."
+  (should (equal (mew-hmac-md5 "challenge" "ひみつ")
+                 (mew-hmac-md5 "challenge"
+                               (encode-coding-string "ひみつ" 'utf-8)))))
+
+(ert-deftest mew-test-cram-md5 ()
+  ;; RFC 2195: base64("<user> " + HMAC-MD5(challenge, password))
+  (let ((challenge (mew-base64-encode-string "what do ya want for nothing?")))
+    (should (equal (mew-base64-decode-string
+                    (mew-cram-md5 "user" "Jefe" challenge))
+                   "user 750c783e6ab0b503eaa86e310a5db738"))))
+
+(ert-deftest mew-test-auth-select ()
+  ;; The earlier one in the preference list wins.
+  (should (equal (mew-auth-select2 '("LOGIN" "CRAM-MD5")
+                                   '("CRAM-MD5" "PLAIN" "LOGIN"))
+                 "CRAM-MD5"))
+  (should-not (mew-auth-select2 '("GSSAPI") '("CRAM-MD5" "LOGIN"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-passwd.el
+;;;
+
+(ert-deftest mew-test-passwd-pinentry-mode ()
+  "The loopback pinentry mode has to reach epg.
+`epg-pinentry-mode' is the variable epg reads.  Binding
+`epa-pinentry-mode' instead only works when epa happens to be loaded
+already, because that name is an obsolete alias which epa.el creates,
+and the binding is lost altogether once this file is compiled with
+lexical-binding unless the compiler is told the variable is special.
+In a batch run epa is not loaded, so this test tells the two apart."
+  (let ((mew-master-passwd-type 'auth-source)
+        (seen 'unset))
+    (cl-letf (((symbol-function 'auth-source-search)
+               (lambda (&rest _)
+                 (setq seen (bound-and-true-p epg-pinentry-mode))
+                 nil)))
+      (mew-passwd-auth-source-get-passwd "user@host:993"))
+    (should (eq seen 'loopback))))
+
+(ert-deftest mew-test-passwd-rendezvous-own-process ()
+  "Waiting for gpg ends only when that gpg is done.
+Another gpg finishing meanwhile used to end the wait too early."
+  (let ((pro (make-process :name "mew-test-gpg" :command '("sleep" "0.5")
+                           :sentinel #'mew-passwd-sentinel :noquery t))
+        (other (make-pipe-process :name "mew-test-other-gpg" :noquery t)))
+    (unwind-protect
+        (progn
+          ;; e.g. gpg of a nested load exits while we are waiting
+          (run-at-time 0.05 nil #'mew-passwd-sentinel other "finished\n")
+          (mew-passwd-rendezvous pro)
+          (should-not (process-live-p pro)))
+      (delete-process other)
+      (when (process-live-p pro) (delete-process pro)))))
+
+(ert-deftest mew-test-passwd-nested-load ()
+  "A password asked for while the password file is loaded does not
+start another load nor use the minibuffer, which is in use."
+  (let* ((dir (make-temp-file "mew-test-conf" t))
+         (mew-conf-path dir)
+         (mew-passwd-file "mew-passwd-test")
+         (mew-use-master-passwd t)
+         (mew-use-cached-passwd nil)
+         (mew-master-passwd-type 'master)
+         (mew-passwd-master nil)
+         (mew-passwd-alist nil)
+         (loads 0)
+         (asked nil)
+         (inner 'not-called))
+    (unwind-protect
+        (progn
+          (write-region "" nil (expand-file-name mew-passwd-file dir) nil 'no-msg)
+          (cl-letf (((symbol-function 'mew-passwd-check-agent-hack) #'ignore)
+                    ((symbol-function 'mew-timing) #'ignore)
+                    ((symbol-function 'mew-passwd-save) #'ignore)
+                    ((symbol-function 'message) #'ignore)
+                    ((symbol-function 'mew-read-passwd)
+                     (lambda (&rest _) (setq asked t) "typed"))
+                    ((symbol-function 'mew-passwd-load)
+                     (lambda ()
+                       (setq loads (1+ loads))
+                       ;; another connection while the master password is read
+                       (when (= loads 1)
+                         (setq inner (mew-input-passwd "Password: " "other")))
+                       (setq mew-passwd-master t)
+                       (list (list "key" "secret" 0)))))
+            (should (equal (mew-input-passwd "Password: " "key") "secret"))
+            (should (= loads 1))
+            (should (equal inner ""))
+            (should-not asked)))
+      (remove-hook 'kill-emacs-hook 'mew-passwd-clean-up)
+      (delete-directory dir t))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-pick.el
+;;;
+
+(ert-deftest mew-test-pick-parse ()
+  "The pattern of a pick, from the text to the parse tree.
+`mew-pick-parse1' and the rest read and set
+`mew-inherit-pick-tokens', so the binding has to stay dynamic."
+  (should (equal (mew-pick-parse (mew-pick-lex "from=kazu"))
+                 '(("=" "from" "kazu"))))
+  (should (equal (mew-pick-parse (mew-pick-lex "from=kazu & subject=test"))
+                 '(("=" "from" "kazu") and ("=" "subject" "test"))))
+  (should (equal (mew-pick-parse (mew-pick-lex "from=a | from=b"))
+                 '(("=" "from" "a") or ("=" "from" "b"))))
+  (should (equal (mew-pick-parse (mew-pick-lex "! from=spam"))
+                 '(not ("=" "from" "spam"))))
+  (should (equal (mew-pick-parse (mew-pick-lex "(from=a | from=b) & subject=x"))
+                 '(open ("=" "from" "a") or ("=" "from" "b") close
+                        and ("=" "subject" "x"))))
+  (should-not (mew-pick-parse (mew-pick-lex ""))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-summary.el
+;;;
+
+(ert-deftest mew-test-summary-multi-msgs-binds-on-demand ()
+  "FLD-MSG-LIST is bound only for a body which mentions it.
+Binding it for a body which does not is an unused variable once this
+file is compiled with lexical binding."
+  (let ((with (macroexpand '(mew-summary-multi-msgs (ignore FLD-MSG-LIST))))
+        (without (macroexpand '(mew-summary-multi-msgs (ignore FILES)))))
+    (should (member '(FLD-MSG-LIST FLD-MSGS) (cadr with)))
+    (should-not (member '(FLD-MSG-LIST FLD-MSGS) (cadr without)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-net.el
+;;;
+
+(ert-deftest mew-test-net-msg-pack ()
+  (should (equal (mew-net-msg-pack '("1" "3" "4" "5" "7" "8" "10"))
+                 '("1" "3:5" "7:8" "10")))
+  (should (equal (mew-net-msg-pack '("1")) '("1")))
+  (should-not (mew-net-msg-pack nil)))
+
+(ert-deftest mew-test-net-msg-cat ()
+  ;; note that mew-net-msg-cat destroys its argument with setcdr,
+  ;; so each call needs a fresh list
+  (should (equal (mew-net-msg-cat (mapcar #'number-to-string
+					  (number-sequence 1 23)))
+		 '("1,2,3,4,5,6,7,8,9,10"
+		   "11,12,13,14,15,16,17,18,19,20"
+		   "21,22,23")))
+  (should-not (mew-net-msg-cat nil))
+  ;; a single message is passed through, a run becomes a range
+  (should (equal (mew-net-msg-group '("9")) '("9")))
+  (should (equal (mew-net-msg-group (mapcar #'number-to-string
+					    (number-sequence 1 23)))
+		 '("1:23"))))
+
+(defun mew-test-imap-xoauth2 (imap2 capability)
+  "Authenticate with XOAUTH2 after CAPABILITY through the filter.
+Use mew-imap2 if IMAP2.  Return the sent lines in order."
+  (let* ((p (if imap2 "mew-imap2-" "mew-imap-"))
+         (fn (lambda (name) (intern (concat p name))))
+         (buf (generate-new-buffer " *mew-test-imap*"))
+         (pro (make-pipe-process :name (concat p "info-test") :buffer buf
+                                 :noquery t))
+         (pnm (process-name pro))
+         (sent nil))
+    (unwind-protect
+        (cl-letf (((symbol-function (funcall fn "process-send-string"))
+                   (lambda (_pro _pnm &rest args)
+                     (funcall (funcall fn "set-tag") pnm "a1")
+                     (setq sent (cons (apply #'format args) sent))))
+                  ((symbol-function (funcall fn "process-send-string2"))
+                   (lambda (_pro &rest args)
+                     (setq sent (cons (apply #'format args) sent))))
+                  ((symbol-function 'mew-xoauth2-auth-string)
+                   (lambda (&rest _) "TOKEN"))
+                  ((symbol-function (funcall fn "command-next"))
+                   (lambda (&rest _) (setq sent (cons 'next sent)))))
+          (mew-info-clean-up pnm)
+          (funcall (funcall fn "set-auth") pnm t)
+          (if (fboundp (funcall fn "set-secure"))
+              (funcall (funcall fn "set-secure") pnm t))
+          (funcall (funcall fn "set-auth-list") pnm '("XOAUTH2"))
+          (funcall (funcall fn "set-status") pnm "capability")
+          (funcall (funcall fn "set-tag") pnm "a0")
+          (funcall (funcall fn "filter") pro
+                   (format "* CAPABILITY IMAP4rev1 %s AUTH=XOAUTH2\r\na0 OK done\r\n"
+                           capability))
+          (when (equal (funcall (funcall fn "get-status") pnm) "xoauth2")
+            (funcall (funcall fn "filter") pro "+ \r\n"))
+          (should (equal (funcall (funcall fn "get-status") pnm) "auth-xoauth2"))
+          (funcall (funcall fn "filter") pro "a1 OK Success\r\n")
+          (nreverse sent))
+      (delete-process pro)
+      (kill-buffer buf))))
+
+(ert-deftest mew-test-imap-xoauth2-sasl-ir ()
+  "The token goes with AUTHENTICATE only if the server has SASL-IR."
+  (dolist (imap2 '(nil t))
+    (should (equal (mew-test-imap-xoauth2 imap2 "SASL-IR")
+                   '("AUTHENTICATE XOAUTH2 TOKEN" next)))
+    (should (equal (mew-test-imap-xoauth2 imap2 "")
+                   '("AUTHENTICATE XOAUTH2" "TOKEN" next)))))
+
+(ert-deftest mew-test-imap-mailbox-arrange ()
+  "A mailbox with children gets the separator appended."
+  (let ((lst (list (list "inbox") (list "inbox/sub")
+		   (list "work") (list "work/a") (list "zz"))))
+    (mew-imap-mailbox-arrange lst "/")
+    (should (equal lst '(("inbox/") ("inbox/sub")
+			 ("work/") ("work/a") ("zz"))))))
+
+(ert-deftest mew-test-serv-to-port ()
+  (should (equal (mew-serv-to-port "imaps") 993))
+  (should (equal (mew-serv-to-port "587") 587))
+  (should (equal (mew-serv-to-port 25) 25)))
+
+(defun mew-test-sentinel-flush (proto)
+  "Run the sentinel of PROTO for a connection of case \"work\" while
+another case is current, and return the case whose queue is flushed."
+  (let* ((pnm (format "mew-%s-info-test" proto))
+         (pro (make-pipe-process :name pnm :noquery t))
+         (bnm "*mew-test-sentinel*")
+         (mew-case "home")
+         (mew-auto-flush-queue t)
+         (flushed 'not-flushed))
+    (unwind-protect
+        (progn
+          (get-buffer-create bnm)
+          (mew-info-clean-up pnm)
+          (funcall (intern (format "mew-%s-set-case" proto)) pnm "work")
+          (funcall (intern (format "mew-%s-set-bnm" proto)) pnm bnm)
+          (funcall (intern (format "mew-%s-set-flush" proto)) pnm t)
+          (funcall (intern (format "mew-%s-set-done" proto)) pnm t)
+          (funcall (intern (format "mew-%s-set-error" proto)) pnm "error")
+          (cl-letf (((symbol-function 'mew-smtp-flush-queue)
+                     (lambda (case &rest _) (setq flushed case)))
+                    ((symbol-function 'mew-summary-mark-recover) #'ignore)
+                    ((symbol-function 'mew-summary-unlock) #'ignore)
+                    ((symbol-function 'mew-net-disp-info-display) #'ignore)
+                    ((symbol-function 'mew-net-status-clear) #'ignore)
+                    ((symbol-function 'mew-expand-file) #'ignore))
+            (funcall (intern (format "mew-%s-sentinel" proto)) pro "finished\n"))
+          flushed)
+      (delete-process pro)
+      (mew-info-clean-up pnm)
+      (kill-buffer bnm))))
+
+(ert-deftest mew-test-sentinel-flush-case ()
+  "The queue flushed after receiving is the one of the receiving case,
+not of the case which happens to be current then."
+  (should (equal (mew-test-sentinel-flush "pop") "work"))
+  (should (equal (mew-test-sentinel-flush "imap") "work")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; What Mew relies on
+;;;
+
+(ert-deftest mew-test-emacs-features ()
+  "Everything Mew uses without a guard has to be there.
+INSTALL.md says Emacs 27.1 or later, and the oldest Emacs of the CI
+matrix is what really checks this list.  A guard removed from the
+compatibility code of mew-env.el belongs here."
+  (dolist (f '(add-name-to-file
+               base64-decode-region
+               base64-encode-region
+               called-interactively-p
+               characterp
+               charset-priority-list
+               coding-system-p
+               create-image
+               face-all-attributes
+               fill-match-adaptive-prefix
+               find-charset-region
+               make-symbolic-link
+               match-string-no-properties
+               minibuffer-prompt-end
+               multibyte-string-p
+               run-mode-hooks
+               set-buffer-multibyte
+               set-charset-priority
+               set-coding-system-priority
+               set-file-times
+               set-process-query-on-exit-flag
+               string-as-multibyte
+               string-bytes
+               subst-char-in-string
+               time-equal-p
+               with-no-warnings))
+    (should (fboundp f)))
+  (dolist (v '(auto-hscroll-mode
+               line-number-mode
+               minibuffer-local-map
+               mode-line-format
+               temporary-file-directory))
+    (should (boundp v))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-gnutls.el
+;;;
+
+(defun mew-test-gnutls-handshake (proto starttlsp greeting replies &optional nsm)
+  "Run `mew-gnutls-handshake' against a fake server.
+GREETING is in the buffer from the start for STARTTLS, or comes with
+TLS otherwise.  REPLIES maps a command regexp to its reply.  Return
+the result and the keyword arguments given to `gnutls-negotiate'.
+NSM replaces `nsm-verify-connection'."
+  (let* ((buf (generate-new-buffer " *mew-test-gnutls*"))
+         (pro (make-pipe-process :name "mew-test-gnutls" :buffer buf
+                                 :noquery t))
+         (reply (lambda (str)
+                  (with-current-buffer buf
+                    (goto-char (point-max))
+                    (insert str))))
+         negotiated)
+    (unwind-protect
+        (cl-letf (((symbol-function 'process-send-string)
+                   (lambda (_pro cmd)
+                     (dolist (r replies)
+                       (if (string-match (car r) cmd)
+                           (funcall reply (cdr r))))))
+                  ((symbol-function 'gnutls-negotiate)
+                   (lambda (&rest args)
+                     (setq negotiated args)
+                     (unless starttlsp (funcall reply greeting))))
+                  ((symbol-function 'nsm-verify-connection)
+                   (or nsm (lambda (pro &rest _) pro))))
+          (if starttlsp (funcall reply greeting))
+          (list (condition-case err
+                    (mew-gnutls-handshake pro "mail.example.org" 25
+                                          proto starttlsp "default")
+                  (error (error-message-string err)))
+                negotiated))
+      (delete-process pro)
+      (kill-buffer buf))))
+
+(ert-deftest mew-test-gnutls-starttls-smtp ()
+  "Mew's TLS parameters are given to `gnutls-negotiate' for STARTTLS."
+  (let* ((mew-ssl-algorithm-priority "SECURE256")
+         (ret (mew-test-gnutls-handshake
+               'smtp t "220-mail\n220 ready\n"
+               '(("\\`EHLO " . "250-mail\n250-STARTTLS\n250 8BITMIME\n")
+                 ("\\`STARTTLS" . "220 go ahead\n")))))
+    (should (equal (car ret) "220-mail\n220 ready\n"))
+    (should (equal (plist-get (nth 1 ret) :priority-string) "SECURE256"))
+    (should (equal (plist-get (nth 1 ret) :hostname) "mail.example.org"))))
+
+(ert-deftest mew-test-gnutls-starttls-not-supported ()
+  "Without STARTTLS, TLS is not negotiated."
+  (let ((ret (mew-test-gnutls-handshake
+              'smtp t "220 ready\n"
+              '(("\\`EHLO " . "250-mail\n250 8BITMIME\n")))))
+    (should (equal (car ret) "Server does not support STARTTLS"))
+    (should-not (nth 1 ret))))
+
+(ert-deftest mew-test-gnutls-starttls-imap ()
+  "IMAP replies end with the tagged line, not with the first line."
+  (let ((ret (mew-test-gnutls-handshake
+              'imap t "* OK ready\n"
+              '(("\\`1 CAPABILITY" . "* CAPABILITY IMAP4rev1 STARTTLS\n1 OK done\n")
+                ("\\`2 STARTTLS" . "2 OK begin\n")))))
+    (should (equal (car ret) "* OK ready\n"))
+    (should (nth 1 ret)))
+  (let ((ret (mew-test-gnutls-handshake
+              'imap t "* OK ready\n"
+              '(("\\`1 CAPABILITY" . "* CAPABILITY IMAP4rev1 STARTTLS\n1 OK done\n")
+                ("\\`2 STARTTLS" . "2 BAD no\n")))))
+    (should (equal (car ret) "Server refused STARTTLS"))
+    (should-not (nth 1 ret))))
+
+(ert-deftest mew-test-gnutls-nntp-no-capabilities ()
+  "An error reply to CAPABILITIES does not wait for the timeout."
+  (let ((ret (mew-test-gnutls-handshake
+              'nntp t "200 ready\n"
+              '(("\\`CAPABILITIES" . "500 what?\n")))))
+    (should (equal (car ret) "Server does not support STARTTLS"))))
+
+(ert-deftest mew-test-gnutls-tls-greeting ()
+  "With TLS, the greeting is read after the handshake."
+  (let ((ret (mew-test-gnutls-handshake 'pop nil "+OK ready\n" nil)))
+    (should (equal (car ret) "+OK ready\n"))
+    (should (nth 1 ret))))
+
+(ert-deftest mew-test-gnutls-verify-level-0 ()
+  "Level 0 skips NSM for this connection only."
+  (let ((mew-ssl-verify-level 0)
+        (nsm nil))
+    (should (equal (car (mew-test-gnutls-handshake
+                         'pop nil "+OK ready\n" nil
+                         (lambda (&rest _) (setq nsm t) nil)))
+                   "+OK ready\n"))
+    (should-not nsm))
+  (let ((mew-ssl-verify-level 1))
+    (should (equal (car (mew-test-gnutls-handshake
+                         'pop nil "+OK ready\n" nil #'ignore))
+                   "Server certificate is not accepted"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-stunnel.el
+;;;
+
+(ert-deftest mew-test-stunnel-reuse-key ()
+  "A tunnel is not reused for other options, nor for a similar server."
+  (let* ((mew-ssl-verify-level 1)
+         (key1 (mew-stunnel-key nil nil))
+         (key2 (let ((mew-ssl-verify-level 0)) (mew-stunnel-key nil nil)))
+         (key3 (mew-stunnel-key nil "pop3"))
+         (name (mew-stunnel-info-name "mail.example.org" 995 key1 8001))
+         (regex (mew-stunnel-info-name-regex "mail.example.org" 995 key1)))
+    (should-not (equal key1 key2))
+    (should-not (equal key1 key3))
+    (should (equal key1 (mew-stunnel-key nil nil)))
+    (should (string-match regex name))
+    (should (equal (mew-ssl-pnm-to-lport name) "8001"))
+    (should-not (string-match regex (mew-stunnel-info-name "mailxexample.org" 995 key1 8001)))
+    (should-not (string-match regex (mew-stunnel-info-name "mail.example.org" 9950 key1 8001)))
+    (should-not (string-match regex (mew-stunnel-info-name "mail.example.org" 995 key2 8001)))))
+
+(ert-deftest mew-test-stunnel-failed-to-initialize ()
+  "\"Failed to initialize TLS\" is a failure, not a success."
+  (let* ((pro (make-pipe-process :name "mew-stunnel-info-test" :noquery t))
+         (pnm (process-name pro)))
+    (unwind-protect
+        (progn
+          (mew-info-clean-up pnm)
+          (mew-stunnel-filter2 pro "LOG3[0]: Failed to initialize TLS\n")
+          (should (eq (mew-stunnel-get-status pnm) 'tls-failure)))
+      (delete-process pro))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-sort.el
+;;;
+
+(ert-deftest mew-test-sort-key-mlnum ()
+  (let ((nul (string 0)))
+    (should (equal (mew-sort-key-mlnum "[mew-dist: 12345] Hello" nil nil)
+		   (concat "[mew-dist:" nul "0000012345")))
+    (should (equal (mew-sort-key-mlnum "(ml 7) Hi" nil nil)
+		   (concat "(ml" nul "0000000007")))
+    (should (equal (mew-sort-key-mlnum "42" nil nil)
+		   (concat nul "0000000042")))
+    ;; no number at all sorts as zero
+    (should (equal (mew-sort-key-mlnum "plain subject" nil nil)
+		   (concat nul "0000000000")))))
+
+(ert-deftest mew-test-sort-key-postnum ()
+  (should (equal (mew-sort-key-postnum "msg-100" nil nil) 100))
+  (should (equal (mew-sort-key-postnum "7" nil nil) 7))
+  (should (equal (mew-sort-key-num "42" nil nil) 42)))
+
+(ert-deftest mew-test-sort-key-text ()
+  (should (equal (mew-sort-key-text "Re: Re: Fw: Hello" nil nil) "Hello"))
+  (should (equal (mew-sort-key-text "[foo] Bar (was: Baz)" nil nil) "[foo] Bar")))
+
+(ert-deftest mew-test-sort-predicates ()
+  (should (equal (sort (list '(1 . "c") '(2 . "a") '(3 . "b")) 'mew-sort-string)
+		 '((2 . "a") (3 . "b") (1 . "c"))))
+  (should (equal (sort (list '(1 . 30) '(2 . 10) '(3 . 20)) 'mew-sort-number)
+		 '((2 . 10) (3 . 20) (1 . 30))))
+  ;; both predicates must accept equal keys
+  (should (mew-sort-string '(1 . "a") '(2 . "a")))
+  (should (mew-sort-number '(1 . 1) '(2 . 1))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-func.el: structures
+;;;
+
+(ert-deftest mew-test-defstruct-accessors ()
+  "mew-defstruct and mew-info-defun install their accessors with fset,
+handing a raw list to it instead of a function."
+  (let ((e (mew-make-ecsdb :lcs 'utf-8 :cs 'utf-8 :cte "8bit")))
+    (should (eq (mew-ecsdb-get-lcs e) 'utf-8))
+    (should (equal (mew-ecsdb-get-cte e) "8bit"))
+    (mew-ecsdb-set-cte e "base64")
+    (should (equal (mew-ecsdb-get-cte e) "base64")))
+  (should-error (mew-make-ecsdb :nosuch 1))
+  (should-error (mew-make-ecsdb 'lcs 1)))
+
+(ert-deftest mew-test-info-defun-accessors ()
+  (mew-info-defun "mew-test-info-" '("alpha" "beta"))
+  (let ((v (make-vector 2 nil)))
+    (funcall (intern "mew-test-info-set-alpha") v "a")
+    (funcall (intern "mew-test-info-set-beta")  v "b")
+    (should (equal (funcall (intern "mew-test-info-get-alpha") v) "a"))
+    (should (equal (funcall (intern "mew-test-info-get-beta")  v) "b"))
+    ;; a non vector, non string argument yields nil
+    (should-not (funcall (intern "mew-test-info-get-alpha") 'sym))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-scan.el
+;;;
+
+(ert-deftest mew-test-scan-accessors ()
+  "mew-scan-setup installs a (MEW-FOO) for each of
+`mew-scan-fields-alias\=', and each of them reads `mew-vec\='.
+mew-scan-get-line binds mew-vec with a let, so the binding has to
+stay dynamic."
+  (require 'mew-varsx)
+  (mew-scan-setup)
+  (let ((mew-vec (vconcat (mapcar (lambda (a) (concat "<" a ">"))
+				  mew-scan-fields-alias))))
+    (dolist (a mew-scan-fields-alias)
+      (let ((f (intern (concat "MEW-" a))))
+	(should (fboundp f))
+	(should (equal (funcall f) (concat "<" a ">")))))))
+
+(ert-deftest mew-test-scan-get-piece-bidi ()
+  "A column truncated in the middle of a bidi override must not leave
+it open; that reversed the rest of the summary line (#335)."
+  (let ((from (concat "⁦‮" "【 せ ら 知 お 庁 税 国 】" "‬⁩"))
+	(mew-inherit-total 0)
+	(mew-inherit-width 80)
+	piece)
+    (cl-letf (((symbol-function 'mew-summary-form-from) (lambda () from)))
+      (setq piece (mew-scan-get-piece '(17 from))))
+    (should (= (string-width piece) 17))
+    (should (string-prefix-p "【" piece))
+    (should-not (string-match mew-regex-bidi-control piece))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; The tree itself
+;;;
+
+(ert-deftest mew-test-lexical-binding-cookie ()
+  "Every file of Mew says lexical-binding: t on its first line.
+A file that says nil, or says nothing, compiles under dynamic binding
+and none of the checks in \"make detect\" reach it."
+  (let ((dir (file-name-directory (locate-library "mew-func")))
+	(count 0)
+	offenders)
+    (dolist (file (directory-files dir t "\\`mew.*\\.el\\'"))
+      (setq count (1+ count))
+      (with-temp-buffer
+	(insert-file-contents file nil 0 200)
+	(goto-char (point-min))
+	(unless (string-match-p
+		 "lexical-binding: t"
+		 (buffer-substring (point-min) (line-end-position)))
+	  (push (file-name-nondirectory file) offenders))))
+    (should-not offenders)
+    ;; guard against looking at the wrong directory
+    (should (> count 60))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-func.el: process
+;;;
+
+(ert-deftest mew-test-process-wait-idle ()
+  "A program which says nothing is killed rather than waited on for ever.
+unzip and zip ask for a password on a pty and sit there until someone
+answers."
+  (let* ((mew-process-idle-max 3) ;; 0.3 seconds
+	 (start (current-time))
+	 (pro (start-process "sleep" nil "sleep" "10")))
+    (unwind-protect
+	(progn
+	  (mew-process-wait pro)
+	  (should-not (process-live-p pro))
+	  (should (< (float-time (time-since start)) 5)))
+      (if (process-live-p pro) (delete-process pro)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-attach.el
+;;;
+
+(ert-deftest mew-test-zip-password-not-on-command-line ()
+  "The password is answered to the prompt of zip, never passed as an
+argument, where \"ps\" would show it to everybody on the machine."
+  (let (captured)
+    (cl-letf (((symbol-function 'start-process)
+	       (lambda (&rest args) (setq captured args) 'fake))
+	      ((symbol-function 'mew-process-silent-exit) #'ignore)
+	      ((symbol-function 'set-process-sentinel) #'ignore)
+	      ((symbol-function 'set-process-filter) #'ignore)
+	      ((symbol-function 'mew-process-wait) #'ignore))
+      (mew-zip-file "s3cret" "a.zip" "a.txt"))
+    ;; name, buffer, then the command and its arguments
+    (should (equal (cddr captured) (list mew-prog-zip "-e" "a.zip" "a.txt")))
+    (should-not (member "s3cret" captured))
+    (should-not (member "-P" captured))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-pgp.el: the passphrase of GnuPG 2
+;;;
+
+(ert-deftest mew-test-pgp-loopback-options ()
+  "GnuPG 2 hands the passphrase inquiry to pinentry unless it is told
+to ask over its command channel, which is the only channel Mew can
+answer on."
+  (let ((mew-use-pgp-loopback-pinentry t))
+    (let ((mew-pgp-ver mew-pgp-verg2))
+      (should (equal (mew-pgp-loopback-options '("--detach-sign"))
+		     '("--detach-sign" "--pinentry-mode" "loopback"))))
+    ;; older programs ask on their own terminal, which Mew reads
+    (let ((mew-pgp-ver mew-pgp-verg))
+      (should (equal (mew-pgp-loopback-options '("--detach-sign"))
+		     '("--detach-sign")))))
+  ;; the way out for an agent told no-allow-loopback-pinentry
+  (let ((mew-use-pgp-loopback-pinentry nil)
+	(mew-pgp-ver mew-pgp-verg2))
+    (should (equal (mew-pgp-loopback-options '("--detach-sign"))
+		   '("--detach-sign")))))
+
+(ert-deftest mew-test-pgp-passphrase-prompt ()
+  "GnuPG 2 asks for the passphrase on the status channel and never
+prints a prompt of its own."
+  (let* ((mew-pgp-ver mew-pgp-verg2)
+	 (regex (mew-pgp-get mew-pgp-msg-enter-pass)))
+    (should (string-match regex "[GNUPG:] GET_HIDDEN passphrase.enter\n"))
+    ;; a gpg which does print the prompt is still understood
+    (should (string-match regex "Enter passphrase: "))
+    ;; the line which merely announces the need is not the inquiry
+    (should-not (string-match regex
+			      "[GNUPG:] NEED_PASSPHRASE 680C9B8A 680C9B8A 22 0\n"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-search.el
+;;;
+
+(ert-deftest mew-test-search-est-path-encode ()
+  "Hyper Estraier stores a file URI percent-encoded, so a folder is
+looked up that way.  Mew used to apply Q encoding here, which gets an
+underscore and a space the wrong way round and matches nothing."
+  (should (equal (mew-search-est-path-encode "Mail/") "Mail/"))
+  (should (equal (mew-search-est-path-encode "Mail/inbox/") "Mail/inbox/"))
+  (should (equal (mew-search-est-path-encode "Mail_local/") "Mail_local/"))
+  (should (equal (mew-search-est-path-encode "Mail dir/") "Mail%20dir/"))
+  ;; what Q encoding gave, neither of which Hyper Estraier has
+  (should (equal (mew-q-encode-string "Mail_local/" ?%) "Mail%5Flocal/"))
+  (should (equal (mew-q-encode-string "Mail dir/" ?%) "Mail_dir/")))
+
+(ert-deftest mew-test-search-switch-notmuch ()
+  "Notmuch has no function to canonicalize a pattern, register or
+unregister a folder, or filter the input."
+  (let ((ent (mew-search-get-ent 'notmuch)))
+    (should (= (length ent) 11))
+    (should-not (mew-search-get-func-canonicalize-pattern ent))
+    (should-not (mew-search-get-func-register ent))
+    (should-not (mew-search-get-func-unregister ent))
+    (should-not (mew-search-get-func-filter ent))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-encode.el: a failing encoder
+;;;
+
+(ert-deftest mew-test-encode-mime-body-check ()
+  "What the encoder printed has to go when it failed, since it sits
+where the encoded body would be and would be sent as the message."
+  (with-temp-buffer
+    (insert "kept")
+    (let ((beg (point-max)))
+      (insert "encoded body")
+      (mew-encode-mime-body-check 0 beg) ;; 0 means it worked
+      (should (equal (buffer-string) "keptencoded body"))))
+  (with-temp-buffer
+    (insert "kept")
+    (let ((beg (point-max)))
+      (insert "junk from a failing encoder")
+      (should-error (mew-encode-mime-body-check 1 beg))
+      (should (equal (buffer-string) "kept"))
+      (should (equal (mew-tinfo-get-encode-err)
+		     (concat mew-prog-mime-encode " failed")))))
+  ;; nil is a program which could not be run at all
+  (with-temp-buffer
+    (insert "junk")
+    (should-error (mew-encode-mime-body-check nil (point-min)))
+    (should (equal (buffer-string) ""))))
+
+(ert-deftest mew-test-convert-mime-body-failure ()
+  "The whole path, with an encoder which prints and then fails."
+  (let* ((dir (make-temp-file "mew-test" 'dir))
+	 (mew-temp-dir dir)
+	 (mew-temp-file (expand-file-name "mew" dir)))
+    (unwind-protect
+	(cl-letf (((symbol-function 'mew-which-exec) (lambda (&rest _) "mewencode"))
+		  ((symbol-function 'call-process)
+		   (lambda (&rest _) (insert "junk from a failing encoder\n") 1)))
+	  (with-temp-buffer
+	    (insert "hello\n")
+	    (should-error (mew-convert-mime-body (point-min) (point-max) mew-qp t))
+	    (should (equal (buffer-string) ""))))
+      (delete-directory dir 'recursive))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-func.el: my own addresses
+;;;
+
+(ert-deftest mew-test-my-address-regex-list ()
+  "A bare user name is mine, which is how locally delivered mail
+arrives.  Anything else has to be a whole address."
+  (let ((mew-config-alist '(("default" ("user" "kazu")
+			     ("mail-domain" "example.org"))))
+	(mew-mail-address-list nil))
+    (let ((me (mew-get-my-address-regex-list)))
+      (should (mew-is-my-address me "kazu@example.org"))
+      (should (mew-is-my-address me "kazu"))  ;; no domain
+      (should (mew-is-my-address me "KAZU"))  ;; case is ignored
+      (should-not (mew-is-my-address me "kazu@elsewhere.example.com"))
+      (should-not (mew-is-my-address me "other@example.org"))
+      (should-not (mew-is-my-address me "kazu@")))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-draft.el: a read-only body
+;;;
+
+(defun mew-test-draft-buffer (contaminate attach)
+  "Build a draft in the current buffer, as mew-header-set does it.
+With CONTAMINATE, the body gets the read-only property, which is #128.
+With ATTACH, an attachments region is there and keeps its own."
+  (let ((inhibit-read-only t))
+    (insert "To: a@example.org\n")
+    (let ((sep (point)))
+      (insert mew-header-separator "\n")
+      (put-text-property sep (point) 'read-only t))
+    (let ((body (point)))
+      (insert "one\ntwo\n")
+      (when contaminate
+	(put-text-property body (point-max) 'read-only t)))
+    (when attach
+      (let ((beg (point)))
+	(insert "\n--attachments--\nend\n")
+	(put-text-property beg (1+ beg) 'mew-attach-begin t)
+	(put-text-property (1- (point-max)) (point-max) 'mew-attach-end t)
+	(put-text-property (mew-attach-begin) (point-max) 'read-only t)))))
+
+(ert-deftest mew-test-draft-body-clear-read-only ()
+  "A body with the read-only property can be neither edited nor sent."
+  (mew-regex-setup)
+  (with-temp-buffer
+    (mew-test-draft-buffer 'contaminate nil)
+    (should (get-text-property (- (point-max) 2) 'read-only))
+    (mew-draft-body-clear-read-only)
+    (should-not (get-text-property (- (point-max) 2) 'read-only))
+    ;; the separator keeps its own
+    (should (get-text-property (mew-header-end) 'read-only)))
+  ;; a body which is already right is left alone
+  (with-temp-buffer
+    (mew-test-draft-buffer nil nil)
+    (mew-draft-body-clear-read-only)
+    (should-not (get-text-property (- (point-max) 2) 'read-only))
+    (should (get-text-property (mew-header-end) 'read-only))))
+
+(ert-deftest mew-test-draft-body-clear-read-only-with-attach ()
+  "The attachments are meant to be read-only, so they stay that way."
+  (mew-regex-setup)
+  (with-temp-buffer
+    (mew-test-draft-buffer 'contaminate 'attach)
+    (let ((attach (mew-attach-begin)))
+      (should attach)
+      (mew-draft-body-clear-read-only)
+      ;; the body is free
+      (should-not (get-text-property (- attach 2) 'read-only))
+      ;; the attachments are not
+      (should (get-text-property attach 'read-only))
+      (should (get-text-property (- (point-max) 2) 'read-only)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-pgp.el: who GnuPG would not encrypt to
+;;;
+
+(ert-deftest mew-test-pgp-encrypt-check-status ()
+  "GnuPG names the recipient it would not encrypt to, and sometimes
+says why.  Whether it says why depends on how it was asked to look the
+key up, so the recipient is the part which is always there."
+  (cl-flet ((check (status)
+	      (with-temp-buffer
+		(insert status)
+		(mew-pgp-encrypt-check-status))))
+    ;; nothing wrong
+    (should-not (check "[GNUPG:] BEGIN_ENCRYPTION 0 9 2\n[GNUPG:] END_ENCRYPTION\n"))
+    ;; 1 is Not Found, which is what GnuPG says when it did not go looking
+    (should (equal (check "[GNUPG:] INV_RECP 1 <a@example.org>\n")
+		   (concat mew-pgp-result-pubkey ": <a@example.org>")))
+    ;; 0 is no reason given, which is what it says when a lookup found
+    ;; nothing.  That is the usual answer with the settings GnuPG ships.
+    (should (equal (check "[GNUPG:] INV_RECP 0 <a@example.org>\n")
+		   (concat mew-pgp-result-nousable ": <a@example.org>")))
+    ;; 10 is Key not trusted
+    (should (equal (check "[GNUPG:] INV_RECP 10 <a@example.org>\n")
+		   (concat mew-pgp-result-invalid ": <a@example.org>")))
+    ;; an expired key is said so on its own line, which wins
+    (should (equal (check "[GNUPG:] KEYEXPIRED 1758790000\n[GNUPG:] INV_RECP 0 <a@example.org>\n")
+		   (concat mew-pgp-result-expired ": <a@example.org>")))
+    ;; a reason with nothing to say about it still names the recipient
+    (should (equal (check "[GNUPG:] INV_RECP 4 <a@example.org>\n")
+		   (concat mew-pgp-result-other ": <a@example.org>")))))
+
+(ert-deftest mew-test-pgp-verify-check-text-signer ()
+  "The signer's address is text, not a regexp, for PGP 2."
+  (let ((mew-pgp-ver mew-pgp-ver2)
+	(mew-inherit-decode-signer "a[b@example.org"))
+    (with-temp-buffer
+      (insert "\nGood signature from user \"A <a[b@example.org>\".\n")
+      (should (string-match "\\`Good PGP sign " (mew-pgp-verify-check-text))))))
+
+(ert-deftest mew-test-pgp-sign-check-status ()
+  "GnuPG names the key it would not sign with.  The reason code is 9
+whether the key is missing or merely unusable, so the two are told
+apart by whether GnuPG says it considered a key at all."
+  (cl-flet ((check (status)
+	      (with-temp-buffer
+		(insert status)
+		(mew-pgp-sign-check-status))))
+    ;; nothing wrong
+    (should-not (check "[GNUPG:] BEGIN_SIGNING H10\n[GNUPG:] SIG_CREATED D 22 10 00 1 AAAA\n"))
+    ;; no key of that name: nothing was considered
+    (should (equal (check "[GNUPG:] INV_SGNR 9 nosuch@example.org\n")
+		   (concat mew-pgp-result-seckey ": nosuch@example.org")))
+    ;; a key was considered and is expired
+    (should (equal (check (concat "[GNUPG:] KEYEXPIRED 1790419717\n"
+				  "[GNUPG:] KEY_CONSIDERED AAAA 3\n"
+				  "[GNUPG:] INV_SGNR 9 short@example.org\n"))
+		   (concat mew-pgp-result-seckey-expired ": short@example.org")))
+    ;; a key was considered and cannot be used, not self-signed say
+    (should (equal (check (concat "[GNUPG:] KEY_CONSIDERED AAAA 2\n"
+				  "[GNUPG:] INV_SGNR 9 noselfsig@example.org\n"))
+		   (concat mew-pgp-result-seckey-nousable ": noselfsig@example.org")))
+    ;; GnuPG 1 says nothing of this sort, so the old path keeps its say
+    (should-not (check "gpg: skipped \"a@example.org\": secret key not available\n"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-auth.el: passwords over an unencrypted connection
+;;;
+
+(ert-deftest mew-test-auth-cleartext-refused-p ()
+  (let ((mew-auth-cleartext-allowed nil)
+	(mew-config-alist nil))
+    (should (mew-auth-cleartext-refused-p "PLAIN" nil nil))
+    (should (mew-auth-cleartext-refused-p "login" nil nil))
+    (should (mew-auth-cleartext-refused-p "XOAUTH2" nil nil))
+    (should (mew-auth-cleartext-refused-p "AUTHINFO" nil nil))
+    (should-not (mew-auth-cleartext-refused-p "CRAM-MD5" nil nil))
+    (should-not (mew-auth-cleartext-refused-p "PLAIN" t nil))
+    ;; allowed for one case only
+    (let ((mew-config-alist '(("lan" (auth-cleartext-allowed t)))))
+      (should-not (mew-auth-cleartext-refused-p "PLAIN" nil "lan"))
+      (should (mew-auth-cleartext-refused-p "PLAIN" nil "other")))
+    (let ((mew-auth-cleartext-allowed t))
+      (should-not (mew-auth-cleartext-refused-p "PLAIN" nil nil)))))
+
+(defmacro mew-test-with-auth-stubs (&rest body)
+  "Run BODY with the sending side stubbed; `sent' records what happens."
+  `(let ((sent nil)
+	 (mew-auth-cleartext-allowed nil)
+	 (mew-config-alist nil))
+     (cl-letf (((symbol-function 'display-warning) #'ignore)
+	       ((symbol-function 'mew-smtp-command-quit2)
+		(lambda (&rest _) (push 'quit sent)))
+	       ((symbol-function 'mew-smtp-command-auth-plain)
+		(lambda (&rest _) (push 'plain sent)))
+	       ((symbol-function 'mew-smtp-command-auth-cram-md5)
+		(lambda (&rest _) (push 'cram-md5 sent)))
+	       ((symbol-function 'mew-imap-command-logout2)
+		(lambda (&rest _) (push 'logout sent)))
+	       ((symbol-function 'mew-imap-command-login)
+		(lambda (&rest _) (push 'login sent)))
+	       ((symbol-function 'mew-nntp-command-quit2)
+		(lambda (&rest _) (push 'quit sent)))
+	       ((symbol-function 'mew-nntp-message) #'ignore)
+	       ((symbol-function 'mew-nntp-process-send-string)
+		(lambda (&rest _) (push 'authinfo sent))))
+       ,@body)))
+
+(ert-deftest mew-test-auth-cleartext-smtp ()
+  "SMTP stops when only PLAIN is offered without TLS."
+  (let ((pnm "mew-smtp-info-test"))
+    (mew-test-with-auth-stubs
+     (mew-smtp-set-auth-list pnm '("CRAM-MD5" "PLAIN"))
+     (mew-smtp-set-capa pnm '(("AUTH" "PLAIN")))
+     (mew-smtp-set-secure pnm nil)
+     (mew-smtp-command-auth nil pnm)
+     (should (equal sent '(quit)))
+     (should (string-match "needs TLS" (mew-smtp-get-error pnm)))
+     ;; CRAM-MD5 does not send the password
+     (setq sent nil)
+     (mew-smtp-set-capa pnm '(("AUTH" "PLAIN" "CRAM-MD5")))
+     (mew-smtp-command-auth nil pnm)
+     (should (equal sent '(cram-md5)))
+     ;; over TLS
+     (setq sent nil)
+     (mew-smtp-set-capa pnm '(("AUTH" "PLAIN")))
+     (mew-smtp-set-secure pnm t)
+     (mew-smtp-command-auth nil pnm)
+     (should (equal sent '(plain))))))
+
+(ert-deftest mew-test-auth-cleartext-imap-fallback ()
+  "IMAP does not fall back to LOGIN without TLS when AUTH= is gone."
+  (let ((pnm "mew-imap-info-test"))
+    (mew-test-with-auth-stubs
+     (mew-imap-set-auth pnm t)
+     (mew-imap-set-auth-list pnm '("CRAM-MD5"))
+     (mew-imap-set-authl pnm nil)
+     (mew-imap-set-secure pnm nil)
+     (mew-imap-command-authentication nil pnm)
+     (should (equal sent '(logout)))
+     ;; LOGIN chosen by the user is left alone
+     (setq sent nil)
+     (mew-imap-set-auth pnm nil)
+     (mew-imap-command-authentication nil pnm)
+     (should (equal sent '(login))))))
+
+(ert-deftest mew-test-auth-cleartext-nntp ()
+  "NNTP AUTHINFO is not sent without TLS."
+  (let ((pnm "mew-nntp-info-test"))
+    (mew-test-with-auth-stubs
+     (mew-nntp-set-user pnm "user")
+     (mew-nntp-set-secure pnm nil)
+     (mew-nntp-command-authinfo nil pnm)
+     (should (equal sent '(quit)))
+     (setq sent nil)
+     (mew-nntp-set-secure pnm t)
+     (mew-nntp-command-authinfo nil pnm)
+     (should (equal sent '(authinfo))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-bq.el: control characters in parameters
+;;;
+
+(ert-deftest mew-test-param-decode-ctl ()
+  "No control character survives in a parameter value."
+  (let ((mew-decode-broken t))
+    (dolist (hdr '("message/external-body; site=\"=?us-ascii?Q?x=0A!id?=\""
+		   "message/external-body; site*=us-ascii''x%0A%21id"))
+      (should (equal (mew-syntax-get-param (cdr (mew-param-decode hdr)) "site")
+		     "x!id")))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-ext.el: URL of message/external-body
+;;;
+
+(ert-deftest mew-test-ext-url-valid ()
+  "Only http, https and ftp URLs go to the browser."
+  (require 'mew-ext)
+  (should (equal (mew-ext-url-valid "https://www.example.org/a?b=c")
+		 "https://www.example.org/a?b=c"))
+  (should (equal (mew-ext-url-valid "ftp://ftp.example.org/pub/a.tgz")
+		 "ftp://ftp.example.org/pub/a.tgz"))
+  ;; RFC 2017: white space is ignored
+  (should (equal (mew-ext-url-valid "http://www.example.org/very/\n long")
+		 "http://www.example.org/very/long"))
+  (should-not (mew-ext-url-valid "-aCalculator"))
+  (should-not (mew-ext-url-valid "file:///Applications/Calculator.app"))
+  (should-not (mew-ext-url-valid "/Applications/Calculator.app"))
+  (should-not (mew-ext-url-valid "C:\\Windows\\System32\\calc.exe"))
+  (should-not (mew-ext-url-valid "http://x/\e[31m"))
+  (should-not (mew-ext-url-valid nil)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-smime.el: verification
+;;;
+
+;; The output below was taken from gpgsm 2.5.21 with a self-signed
+;; certificate whose CN was chosen by the signer.
+
+(ert-deftest mew-test-smime-verify-check ()
+  "Only status lines count; the signer's DN must not change the result."
+  (cl-flet ((check (out)
+	      (with-temp-buffer
+		(insert out)
+		(mew-smime-verify-check))))
+    ;; the message was changed after it was signed
+    (should (equal (check "\
+[GNUPG:] NEWSIG
+gpgsm: Signature made 2026-11-01 21:56:18 UTC
+gpgsm: invalid signature: message digest attribute does not match computed one
+[GNUPG:] BADSIG 51643A25B9281020EB27675C062A72D3F906AEA4 /CN=Mallory GOODSIG TRUST_FULLY/EMail=ceo@bank.example
+[GNUPG:] FAILURE gpgsm-exit 50331649
+")
+		   "BAD S/MIME sign \"/CN=Mallory GOODSIG TRUST_FULLY/EMail=ceo@bank.example\""))
+    ;; a good signature from a certificate nobody vouches for
+    (should (equal (check "\
+[GNUPG:] NEWSIG
+[GNUPG:] GOODSIG 51643A25B9281020EB27675C062A72D3F906AEA4 /CN=Mallory GOODSIG TRUST_FULLY/EMail=ceo@bank.example
+[GNUPG:] VALIDSIG 51643A25B9281020EB27675C062A72D3F906AEA4 2026-11-01 20261101T215618 20261201T215618 0 0 1 8 00
+gpgsm: invalid certification chain: No agent running
+[GNUPG:] TRUST_UNDEFINED 77
+")
+		   "Good S/MIME sign \"/CN=Mallory GOODSIG TRUST_FULLY/EMail=ceo@bank.example\" UNDEFINED"))
+    ;; no status at all
+    (should (equal (check "gpgsm: GOODSIG TRUST_FULLY EMail=x@example.org\n")
+		   "BAD S/MIME sign"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; mew-syntax.el: the part of a security result painted as bad
+;;;
+
+(ert-deftest mew-test-syntax-bad-sign-face ()
+  "Only the verdict of a bad signature is painted, not the user id."
+  (cl-flet ((bad (result)
+	      (with-temp-buffer
+		(mew-xinfo-set-pri-result result)
+		(mew-decode-syntax-insert-privacy)
+		(let ((pos (point-min)) ret next)
+		  (while (< pos (point-max))
+		    (setq next (next-single-property-change pos 'face nil (point-max)))
+		    (if (eq (get-text-property pos 'face) 'mew-face-header-xmew-bad)
+			(push (buffer-substring-no-properties pos next) ret))
+		    (setq pos next))
+		  (nreverse ret)))))
+    (should (equal (bad "BAD PGP sign \"Alice <signer@example.org>\"")
+		   '("BAD PGP sign")))
+    (should (equal (bad "Bad PGP sign \"Carol <carol@example.org>\"")
+		   '("Bad PGP sign")))
+    (should (equal (bad "BAD S/MIME sign") '("BAD S/MIME sign")))
+    (should-not (bad "Good PGP sign \"Tom Badger <tom@designs.example>\" COMPLETE"))))
+
+(ert-deftest mew-test-cs-m17n ()
+  "Files are written in UTF-8, and old ctext files still read back."
+  (let ((file (make-temp-file "mew-test"))
+	(strs '("abc" "漢字かな" "한국어" "Ελληνικά" "ไทย" "See you 👍")))
+    (cl-flet ((rd ()
+		(with-temp-buffer
+		  (let ((coding-system-for-read mew-cs-m17n))
+		    (insert-file-contents file))
+		  (buffer-string)))
+	      (wr (s cs)
+		(let ((coding-system-for-write cs))
+		  (write-region s nil file nil 'silent))))
+      (unwind-protect
+	  (dolist (s strs)
+	    (wr s mew-cs-m17n)
+	    (should (equal (rd) s))
+	    (should (equal (with-temp-buffer
+			     (set-buffer-multibyte nil)
+			     (insert-file-contents-literally file)
+			     (buffer-string))
+			   (encode-coding-string s 'utf-8-unix)))
+	    (unless (string-match "👍" s)
+	      (wr s 'ctext-unix)
+	      (should (equal (rd) s))))
+	(delete-file file)))))
+
+(ert-deftest mew-test-cs-m17n-invalid-bytes ()
+  "A UTF-8 file with a few invalid bytes is not read as ctext."
+  (let ((file (make-temp-file "mew-test")))
+    (unwind-protect
+	(progn
+	  (with-temp-file file
+	    (set-buffer-multibyte nil)
+	    (insert (encode-coding-string "漢字 " 'utf-8-unix) "\xc8\x7e\n"))
+	  (with-temp-buffer
+	    (let ((coding-system-for-read mew-cs-m17n))
+	      (insert-file-contents file))
+	    (should (equal (buffer-substring 1 4) "漢字 "))
+	    (should (eq (char-after 4) #x3fffc8))))
+      (delete-file file))))
+
+(ert-deftest mew-test-cs-m17n-raw-bytes ()
+  "Raw bytes are written as U+FFFD, even next to read-only text."
+  (let ((file (make-temp-file "mew-test"))
+	(coding-system-for-write mew-cs-m17n))
+    (unwind-protect
+	(progn
+	  (should (equal (encode-coding-string
+			  (concat "漢字 " (string #x3fffc8) "~") mew-cs-m17n)
+			 (encode-coding-string "漢字 \ufffd~" 'utf-8-unix)))
+	  ;; A draft has read-only text.
+	  (with-temp-buffer
+	    (insert "a\n" (propertize "----\n" 'read-only t))
+	    (write-region nil nil file nil 'silent))
+	  (with-temp-buffer
+	    (insert "b\n")
+	    (write-region nil nil file nil 'silent)))
+      (delete-file file))))
+
+(ert-deftest mew-test-charset-gb2312 ()
+  "GB2312 is decoded as GBK, and cn-gb-2312 is still named GB2312."
+  (should (equal (mew-header-decode "gb2312" "B" "x6fIfrmktPOhobyazO+9zMra")
+		 "千葉工大　細田教授"))
+  (should (equal (mew-cs-to-charset 'cn-gb-2312) "gb2312"))
+  (should (equal (mew-cs-to-charset 'gbk) "gbk")))
+
+(ert-deftest mew-test-lisp-save-load-emoji ()
+  "Lisp data files keep characters that ctext cannot hold."
+  (let ((file (make-temp-file "mew-test"))
+	(data '(("a@example.org" "Taro 👍") ("x" . "漢字"))))
+    (unwind-protect
+	(progn
+	  (mew-lisp-save file data nil 'unlimit)
+	  (should (equal (mew-lisp-load file) data)))
+      (delete-file file))))
+
+(ert-deftest mew-test-mime-suffix-agree-p ()
+  "A suffix that does not fit Content-Type: is asked about."
+  (require 'mew-varsx)
+  (let (asked)
+    (cl-letf (((symbol-function 'y-or-n-p) (lambda (_) (setq asked t) nil))
+	      ((symbol-function 'message) #'ignore))
+      (dolist (c '(("clip.mpg" "Video/Mpeg") ("a.zip" "Application/X-Zip-Compressed")
+		   ("song.mp3" "Audio/Mpeg") ("a.wav" "Audio/Wav")
+		   ("photo.JPG" "Image/Jpeg") ("report" "Application/Pdf")
+		   (nil "Application/Pdf")))
+	(setq asked nil)
+	(should (mew-mime-suffix-agree-p (car c) (cadr c)))
+	(should-not asked))
+      (dolist (c '(("clip.hta" "Video/Mpeg") ("invoice.pdf.exe" "Application/Pdf")
+		   ("evil.terminal" "Image/Png")))
+	(setq asked nil)
+	(should-not (mew-mime-suffix-agree-p (car c) (cadr c)))
+	(should asked)))))
+
+(ert-deftest mew-test-param-analyze-broken ()
+  "Encoded words in a parameter are decoded once, left to right."
+  (cl-letf (((symbol-function 'mew-decode-warning-params) #'ignore))
+    (dolist (c '(("=?utf-8?B?5pel5pys?= =?utf-8?B?6Kqe?=.pdf" . "日本語.pdf")
+		 ("head =?utf-8?B?5pel?= mid =?utf-8?Q?=E6=9C=AC?=end"
+		  . "head 日 mid 本end")
+		 ("=?utf-8?B?5pel?==?utf-8?B?5pys?=" . "日本")
+		 ("plain.txt" . "plain.txt")
+		 ;; Decoded text is not decoded again.
+		 ("=?utf-8?Q?=3D=3Futf-8=3FB=3F5pel=3F=3D?=" . "=?utf-8?B?5pel?=")))
+      (should (equal (mew-param-analyze-broken (car c) "filename") (cdr c))))
+    (let ((v (apply #'concat (make-list 20000 "=?utf-8?B?YQ==?="))))
+      (should (equal (mew-param-analyze-broken v "filename")
+		     (make-string 20000 ?a))))))
+
+(ert-deftest mew-test-passwd-token-with-auth-source ()
+  "OAuth2 tokens are kept in memory; passwords still go to auth-source."
+  (let ((mew-master-passwd-type 'auth-source)
+	(mew-passwd-alist nil)
+	(token (make-hash-table))
+	stored)
+    (cl-letf (((symbol-function 'mew-passwd-auth-source-get-passwd)
+	       (lambda (_key) "secret"))
+	      ((symbol-function 'mew-passwd-auth-source-set-passwd)
+	       (lambda (key val) (push (cons key val) stored))))
+      (should (equal (mew-passwd-get-passwd "u@h:imap") "secret"))
+      (mew-passwd-set-passwd "u@h:imap" token)
+      (should (eq (mew-passwd-get-passwd "u@h:imap") token))
+      (should-not stored)
+      (mew-passwd-set-passwd "u@h:imap" nil)
+      (should-not stored)
+      (mew-passwd-set-passwd "u@h:pop" "pass")
+      (should (equal stored '(("u@h:pop" . "pass")))))))
+
+(ert-deftest mew-test-save-file-name-default ()
+  "A name from a message never makes a dot file or leaves the directory."
+  (dolist (c '((".zshenv" . "zshenv") ("report.pdf" . "report.pdf")
+	       ("../../.bashrc" . "bashrc") ("/etc/passwd" . "passwd")
+	       (".config/autostart/x.desktop" . "x.desktop")
+	       ("..." . nil) (nil . nil)))
+    (should (equal (mew-save-file-name-default (car c)) (cdr c)))))
+
+(ert-deftest mew-test-bimi-pass-p ()
+  "Only the topmost Authentication-Results: counts for BIMI."
+  (mew-regex-setup) ;; mew-eoh
+  (cl-flet ((pass (hdr &optional ids)
+	      (with-temp-buffer
+		(insert hdr "Subject: s\n\nbody\n")
+		(goto-char (point-min))
+		(let ((mew-bimi-authserv-id-list ids))
+		  (and (mew-bimi-pass-p) t)))))
+    (let ((own "Authentication-Results: mx.example.net; dkim=pass\n")
+	  (own-pass "Authentication-Results: mx.example.net; bimi=pass\n")
+	  (forged "Authentication-Results: x; bimi=pass\n"))
+      (should (pass own-pass))
+      (should-not (pass (concat own forged)))
+      (should-not (pass forged '("mx.example.net")))
+      (should (pass own-pass '("MX.example.net")))
+      (should-not (pass "")))))
+
+(ert-deftest mew-test-bimi-pass-p-decoded ()
+  "The topmost Authentication-Results: counts even after it is moved."
+  (mew-regex-setup) ;; mew-eoh
+  (cl-flet ((pass (hdr)
+	      (with-temp-buffer
+		(insert hdr "Subject: s\n\nbody\n")
+		(goto-char (point-min))
+		(mew-decode-rfc822-header)
+		(goto-char (point-min))
+		(and (mew-bimi-pass-p) t))))
+    ;; A field with "=softfail" is visible and moved below the others.
+    (should (pass (concat "Authentication-Results: own; sender-id=softfail; bimi=pass\n"
+			  "Authentication-Results: relay; dkim=pass\n")))
+    (should-not (pass (concat "Authentication-Results: own; dkim=fail\n"
+			      "Authentication-Results: forged; bimi=pass\n")))))
+
+(ert-deftest mew-test-debug-redact ()
+  "Credentials do not reach the debug buffer; other commands do."
+  (dolist (c '(("PASS secret" . "PASS ********")
+	       ("AUTHINFO PASS secret" . "AUTHINFO PASS ********")
+	       ("LOGIN \"kazu\" \"secret\"" . "LOGIN \"kazu\" ********")
+	       ("AUTH PLAIN AGthenUAc2VjcmV0" . "AUTH PLAIN ********")
+	       ("c2VjcmV0" . "********")
+	       ("AUTH LOGIN" . "AUTH LOGIN") ("STARTTLS" . "STARTTLS")
+	       ("USER kazu" . "USER kazu") ("RETR 3" . "RETR 3")))
+    (should (equal (mew-debug-redact (car c)) (cdr c)))))
+
+(ert-deftest mew-test-mewl-pattern-args ()
+  "On Windows, a non-ASCII pick pattern goes to mewl in hex."
+  (let ((system-type 'windows-nt))
+    (should (equal (mew-mewl-pattern-args "subject=日本")
+		   '("-P" "7375626a6563743de697a5e69cac")))
+    (should (equal (mew-mewl-pattern-args "from=kazu") '("-p" "from=kazu"))))
+  (let ((system-type 'gnu/linux))
+    (should (equal (mew-mewl-pattern-args "subject=日本")
+		   (list "-p" (encode-coding-string "subject=日本" 'utf-8))))))
+
+(ert-deftest mew-test-delete-images ()
+  "Images such as X-Face: are not printed as blanks."
+  (with-temp-buffer
+    (let ((img '(image :type xbm :data "")))
+      (insert "From:" (propertize " " 'display img) " kazu\n"
+	      (propertize "x" 'display "y") "\n"
+	      (propertize "  " 'display img)))
+    (mew-delete-images)
+    (should (equal (buffer-string) "From: kazu\nx\n"))))
+
+(provide 'mew-test)
+
+;;; Copyright Notice:
+
+;; Copyright (C) 2026 Mew developing team.
+;; All rights reserved.
+
+;; Redistribution and use in source and binary forms, with or without
+;; modification, are permitted provided that the following conditions
+;; are met:
+;;
+;; 1. Redistributions of source code must retain the above copyright
+;;    notice, this list of conditions and the following disclaimer.
+;; 2. Redistributions in binary form must reproduce the above copyright
+;;    notice, this list of conditions and the following disclaimer in the
+;;    documentation and/or other materials provided with the distribution.
+;; 3. Neither the name of the team nor the names of its contributors
+;;    may be used to endorse or promote products derived from this software
+;;    without specific prior written permission.
+;;
+;; THIS SOFTWARE IS PROVIDED BY THE TEAM AND CONTRIBUTORS ``AS IS'' AND
+;; ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+;; IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+;; PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE TEAM OR CONTRIBUTORS BE
+;; LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+;; CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+;; SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+;; BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+;; OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+;; IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+;;; mew-test.el ends here

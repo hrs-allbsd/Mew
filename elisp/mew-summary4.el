@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-summary4.el --- Summary mode for Mew
 
 ;; Author:  Mew developing team
@@ -56,7 +57,7 @@
 
 (defun mew-summary-goto-folder (&optional goend)
   "Go to the folder which you specify.  If executed with
-'\\[universal-argument]', the cursor always goes to the bottom of
+`\\[universal-argument]', the cursor always goes to the bottom of
 Summary mode."
   (interactive "P")
   (let* ((proto (mew-proto-to-go (mew-summary-folder-name 'ext)))
@@ -139,7 +140,7 @@ Summary mode."
 
 (defun mew-summary-goto-line (&optional arg)
   "Jump to a line according to the number which you input.
-If 'mew-summary-goto-line-then-display' is non-nil,
+If `mew-summary-goto-line-then-display' is non-nil,
 the message is then displayed."
   (interactive "P")
   (if arg
@@ -220,7 +221,7 @@ the message is then displayed."
 
 (defun mew-summary-jump-top ()
   "Go to the beginning of this Summary mode.
-If 'mew-summary-jump-top-then-display' is non-nil,
+If `mew-summary-jump-top-then-display' is non-nil,
 the top message is then displayed."
   (interactive)
   (if mew-use-push-mark (mew-push-mark))
@@ -230,7 +231,7 @@ the top message is then displayed."
 
 (defun mew-summary-jump-bottom ()
   "Go to the end of this Summary mode.
-If 'mew-summary-jump-bottom-then-display' is non-nil,
+If `mew-summary-jump-bottom-then-display' is non-nil,
 the top message is then displayed."
   (interactive)
   (if mew-use-push-mark (mew-push-mark))
@@ -248,7 +249,7 @@ the top message is then displayed."
 ;;;
 
 (defun mew-summary-exchange-point ()
-  "\\<mew-summary-mode-map>Get back to the position before typing '\\[mew-summary-retrieve]' or '\\[mew-summary-ls]'."
+  "\\<mew-summary-mode-map>Get back to the position before typing `\\[mew-summary-retrieve]' or `\\[mew-summary-ls]'."
   (interactive)
   (mew-summary-only
    (let ((pos (mew-sinfo-get-ret-pos)))
@@ -296,7 +297,7 @@ the top message is then displayed."
 
 (defun mew-summary-pipe-message (prefix command)
   "Send the content of Message buffer to a command via pipe.
-If called with '\\[universal-argument]', the body of the message
+If called with `\\[universal-argument]', the body of the message
 \(excluding its header) is sent."
   (interactive
    (list current-prefix-arg
@@ -320,8 +321,8 @@ If called with '\\[universal-argument]', the body of the message
 ;;;
 
 (defun mew-summary-print (&optional arg)
-  "Print the content of Message mode according to 'mew-print-function'.
-If called with '\\[universal-argument]', you can specify a printer name."
+  "Print the content of Message mode according to `mew-print-function'.
+If called with `\\[universal-argument]', you can specify a printer name."
   (interactive "P")
   (mew-summary-display 'redisplay)
   (let ((printer-name (if arg
@@ -336,9 +337,20 @@ If called with '\\[universal-argument]', you can specify a printer name."
     (when (y-or-n-p "Print this message? ")
       (with-temp-buffer
 	(insert str)
+	(mew-delete-images)
 	(if have-header
 	    (mew-header-delete-other-lines mew-field-for-printing))
 	(funcall mew-print-function)))))
+
+(defun mew-delete-images ()
+  "Delete the characters which display images, e.g. X-Face: and BIMI.
+They are printed as blanks."
+  (let ((pos (point-min)) next)
+    (while (< pos (point-max))
+      (setq next (next-single-property-change pos 'display nil (point-max)))
+      (if (eq (car-safe (get-text-property pos 'display)) 'image)
+	  (delete-region pos next)
+	(setq pos next)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -347,7 +359,7 @@ If called with '\\[universal-argument]', you can specify a printer name."
 
 (defun mew-summary-store (&optional askcs)
   "Saving a buffer of Message mode to a file.
-If executed with '\\[universal-argument]', coding-system is asked."
+If executed with `\\[universal-argument]', coding-system is asked."
   (interactive "P")
   (mew-summary-display 'redisplay)
   (let* ((file (mew-summary-input-file-name))
@@ -388,6 +400,25 @@ If executed with '\\[universal-argument]', coding-system is asked."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
+;;; BIMI-Indicator:
+;;;
+
+(defun mew-summary-bimi ()
+  "Display BIMI logo."
+  (interactive)
+  (mew-summary-msg
+   (let ((file (mew-make-temp-name)) bimi)
+     (with-current-buffer (mew-buffer-message)
+       (setq bimi (base64-decode-string (mew-header-get-value mew-bimi-indicator:))))
+     (when bimi
+       (with-temp-buffer
+	 (insert bimi)
+	 (mew-frwlet mew-cs-dummy mew-cs-text-for-write
+	   (write-region (point-min) (point-max) file nil 'no-msg)))
+       (mew-mime-image-ext file)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
 ;;; Calling a command
 ;;;
 
@@ -408,7 +439,7 @@ argument."
 
 (defun mew-summary-cmd-msgs ()
   "Executing an external command specifying messages
-marked with '*' as arguments."
+marked with `*' as arguments."
   (interactive)
   (mew-summary-multi-msgs
    (let* ((cmd-args (mew-input-command))
@@ -445,7 +476,7 @@ marked with '*' as arguments."
 If in +postq, post the messages in +postq.
 If in %queue, process the jobs in %queue.
 Otherwise, flush the default queue.
-If executed with '\\[universal-argument]', you can set the sending case."
+If executed with `\\[universal-argument]', you can set the sending case."
   (interactive "P")
   (if (mew-folder-imap-queuep)
       (progn
@@ -481,7 +512,7 @@ If executed with '\\[universal-argument]', you can set the sending case."
 
 (defun mew-subprocess-clean-up ()
   (mew-summary-kill-subprocess t)
-  (remove-hook 'kill-emacs-hook 'mew-subprocess-kil))
+  (remove-hook 'kill-emacs-hook 'mew-subprocess-kill))
 
 (defun mew-subprocess-kill ()
   (mew-summary-kill-subprocess t))
@@ -490,10 +521,10 @@ If executed with '\\[universal-argument]', you can set the sending case."
   "\\<mew-summary-mode-map>
 Kill a process in Summary mode.
 Sometime a process accidentally remains in Summary mode.
-In this situation, you cannot execute '\\[mew-summary-retrieve]', '\\[mew-summary-ls]', nor '\\[mew-summary-exec]'.
+In this situation, you cannot execute `\\[mew-summary-retrieve]', `\\[mew-summary-ls]', nor `\\[mew-summary-exec]'.
 Use this command to solve this problem.
 
-If called with '\\[universal-argument]', all SSH processes, if
+If called with `\\[universal-argument]', all SSH processes, if
 any, are killed."
   (interactive "P")
   (let ((process mew-summary-buffer-process)
@@ -535,7 +566,7 @@ any, are killed."
 ;;;
 
 (defun mew-summary-unshar ()
-  "Apply 'unshar' on messages marked with '*'."
+  "Apply `unshar' on messages marked with `*'."
   (interactive)
   (mew-summary-multi-msgs
    (if (y-or-n-p (format "Execute %s for these messages? " mew-prog-unshar))
@@ -545,7 +576,7 @@ any, are killed."
 	 (message "Executing %s...done" mew-prog-unshar)))))
 
 (defun mew-summary-uudecode ()
-  "Apply 'uudecode' on messages marked with '*'."
+  "Apply `uudecode' on messages marked with `*'."
   (interactive)
   (mew-summary-multi-msgs
    (cond
@@ -554,41 +585,48 @@ any, are killed."
     ((not (y-or-n-p "Uudecode these messages? "))
      ())
     (t
-     (let ((dir (mew-summary-input-directory-name))
-	   (fn nil)
-	   (tmp (mew-make-temp-name))
+     (let ((tmp (mew-make-temp-name))
 	   (case-fold-search nil)
-	   (files FILES) start)
-       (with-temp-buffer
-	 (mew-frwlet mew-cs-text-for-read mew-cs-text-for-write
-	   (dolist (file files)
-	     (mew-erase-buffer)
-	     (mew-insert-file-contents file)
-	     (goto-char (point-min))
-	     (if (re-search-forward mew-eoh nil t)
-		 (forward-line))
-	     (setq start (point))
-	     (goto-char (point-max))
-	     (unless (bolp) (insert "\n"))
-	     (write-region start (point-max) tmp 'append 'no-msg)))
-	 (mew-erase-buffer)
-	 (cd dir)
-	 ;; mew-folder-local is dummy to let mewencode use
-	 ;; the embedded filename
-	 (call-process mew-prog-mime-decode tmp t nil
-		       "-d" "-u" "-" mew-folder-local)
-	 (mew-delete-file tmp)
-	 (goto-char (point-min))
-	 (if (not (looking-at "^filename: \\(.*\\)"))
-	     (message "Failed to execute %s" mew-prog-mime-decode)
-	   (setq fn (mew-match-string 1))
-	   (setq fn (mew-summary-prog-exec mew-prog-compress "-df" "Z" fn))
-	   (setq fn (mew-summary-prog-exec mew-prog-gzip "-df" "gz" fn))
-	   (when (and (string-match "^\\(.*\\)\\.tar$" fn)
-		      (y-or-n-p (format "Execute %s for %s? " mew-prog-tar fn)))
-	     (message "Executing %s for %s..." mew-prog-tar fn)
-	     (call-process mew-prog-tar nil nil nil "-xf" fn)
-	     (message "Executing %s for %s...done" mew-prog-tar fn)))))))))
+	   (files FILES) start name fn)
+       (unwind-protect
+	   (with-temp-buffer
+	     (mew-frwlet mew-cs-text-for-read mew-cs-text-for-write
+	       (dolist (file files)
+		 (mew-erase-buffer)
+		 (mew-insert-file-contents file)
+		 (goto-char (point-min))
+		 (if (re-search-forward mew-eoh nil t)
+		     (forward-line))
+		 (setq start (point))
+		 (unless name
+		   (if (re-search-forward "^begin [0-7]+ \\(.+\\)$" nil t)
+		       (setq name (file-name-nondirectory (mew-match-string 1)))))
+		 (goto-char (point-max))
+		 (unless (bolp) (insert "\n"))
+		 (write-region start (point-max) tmp 'append 'no-msg)))
+	     ;; mewencode writes to the file given here, never to the
+	     ;; name on the begin line, which comes from the message.
+	     (setq fn (mew-summary-input-file-name "Uudecode to: " name))
+	     (cond
+	      ((file-directory-p fn)
+	       (message "%s is a directory" fn))
+	      ((and (file-exists-p fn)
+		    (not (y-or-n-p (format "File exists. Overwrite %s? " fn))))
+	       (message "Not decoded"))
+	      ((not (eq (call-process mew-prog-mime-decode nil nil nil
+				      "-d" "-u" tmp fn)
+			0))
+	       (message "Failed to execute %s" mew-prog-mime-decode))
+	      (t
+	       (cd (file-name-directory fn))
+	       (setq fn (mew-summary-prog-exec mew-prog-compress "-df" "Z" fn))
+	       (setq fn (mew-summary-prog-exec mew-prog-gzip "-df" "gz" fn))
+	       (when (and (string-match "^\\(.*\\)\\.tar$" fn)
+			  (y-or-n-p (format "Execute %s for %s? " mew-prog-tar fn)))
+		 (message "Executing %s for %s..." mew-prog-tar fn)
+		 (call-process mew-prog-tar nil nil nil "-xf" fn)
+		 (message "Executing %s for %s...done" mew-prog-tar fn)))))
+	 (mew-delete-file tmp)))))))
 
 (defun mew-summary-prog-exec (prog opts suffix tarfile)
   (if (string-match (format "^\\(.*\\)\\.%s$" suffix) tarfile)
@@ -607,7 +645,7 @@ any, are killed."
 ;;;
 
 (defun mew-summary-join ()
-  "Concat Message/Partial fragments marked with '*' to an original
+  "Concat Message/Partial fragments marked with `*' to an original
 message."
   (interactive)
   (mew-summary-only
@@ -807,10 +845,10 @@ message."
 	 (message "Copied to %s/%s" dstfld dstmsg)))))))
 
 (defun mew-summary-mark-local-copy (&optional arg)
-  "Copy messages marked with '*' to a local folder.  If called
-with '\\[universal-argument]', only messages marked with '*' in
+  "Copy messages marked with `*' to a local folder.  If called
+with `\\[universal-argument]', only messages marked with `*' in
 the region are handled."
- (interactive "P")
+  (interactive "P")
   (mew-summary-not-in-draft
    (let ((mew-use-highlight-x-face nil)
 	 (fld (mew-summary-folder-name))
@@ -975,9 +1013,9 @@ the region are handled."
 ;;;
 
 (defun mew-summary-toggle-disp-msg (&optional arg)
-  "Toggle 'Summary mode only' and 'Summary & Message mode'. If
-you choose 'Summary mode only', you can quickly put the delete
-	marks since the next message is not displayed."
+  "Toggle `Summary mode only' and `Summary & Message mode'. If
+you choose `Summary mode only', you can quickly put the delete
+marks since the next message is not displayed."
   (interactive)
   (cond
    ((eq arg 'on)
@@ -1000,7 +1038,7 @@ you choose 'Summary mode only', you can quickly put the delete
 ;;;
 
 (defun mew-summary-toggle-8bit ()
-  "Toggle 8bit mode(i.e. 'mew-use-8bit')."
+  "Toggle 8bit mode(i.e. `mew-use-8bit')."
   (interactive)
   (setq mew-use-8bit (not mew-use-8bit))
   (if mew-use-8bit
@@ -1025,8 +1063,8 @@ you choose 'Summary mode only', you can quickly put the delete
 
 (defun mew-summary-toggle-warning ()
   "Toggle warning level.
-If 'mew-warning-field-level' is 2, set it to 1.
-If 'mew-warning-field-level' is 1, set it to 2."
+If `mew-warning-field-level' is 2, set it to 1.
+If `mew-warning-field-level' is 1, set it to 2."
   (interactive)
   (if (= mew-warning-field-level 2)
       (setq mew-warning-field-level 1)
@@ -1041,7 +1079,7 @@ If 'mew-warning-field-level' is 1, set it to 2."
 ;;;
 
 (defun mew-summary-toggle-policy (&optional arg)
-  "Toggle decode policy(i.e. 'mew-decode-broken')."
+  "Toggle decode policy(i.e. `mew-decode-broken')."
   (interactive "P")
   (if arg
       (setq mew-decode-broken nil
@@ -1058,7 +1096,7 @@ If 'mew-warning-field-level' is 1, set it to 2."
 ;;;
 
 (defun mew-summary-toggle-debug ()
-  "Toggle 'mew-debug'."
+  "Toggle `mew-debug'."
   (interactive)
   (setq mew-debug (not mew-debug))
   (if mew-debug
@@ -1071,7 +1109,7 @@ If 'mew-warning-field-level' is 1, set it to 2."
 ;;;
 
 (defun mew-summary-toggle-pgp ()
-  "Toggle PGP/MIME and old PGP (i.e. 'mew-use-old-pgp')."
+  "Toggle PGP/MIME and old PGP (i.e. `mew-use-old-pgp')."
   (interactive)
   (setq mew-use-old-pgp (not mew-use-old-pgp))
   (if mew-use-old-pgp
@@ -1085,7 +1123,7 @@ If 'mew-warning-field-level' is 1, set it to 2."
 
 (defun mew-summary-learn-spam ()
   "Learn that this message is a spam.
-See also 'mew-spam-prog' and 'mew-spam-prog-args."
+See also `mew-spam-prog' and `mew-spam-prog-args."
   (interactive)
   (mew-summary-msg
    (let* ((fld (mew-summary-folder-name))
@@ -1109,7 +1147,7 @@ See also 'mew-spam-prog' and 'mew-spam-prog-args."
 
 (defun mew-summary-learn-ham ()
   "Learn that this message is a ham.
-See also 'mew-ham-prog' and 'mew-ham-prog-args."
+See also `mew-ham-prog' and `mew-ham-prog-args."
   (interactive)
   (mew-summary-msg
    (let* ((fld (mew-summary-folder-name))

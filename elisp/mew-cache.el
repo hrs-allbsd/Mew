@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-cache.el --- Cache management for Mew
 
 ;; Author:  Mew developing team
@@ -26,13 +27,8 @@
 (defun mew-cinfo-equal (fld msg time size)
   (and (string= (mew-cinfo-get-fld) fld)
        (string= (mew-cinfo-get-msg) msg)
-       (equal (mew-cinfo-get-time) time)
+       (time-equal-p (mew-cinfo-get-time) time)
        (eq (mew-cinfo-get-size) size)))
-
-(defun mew-cache-dinfo-get-decode-broken (buf)
-  (when buf
-    (with-current-buffer buf
-      (mew-cinfo-get-decode-broken))))
 
 (defvar mew-xinfo-list
   '("decode-err" "warning" "info" "action" "multi-form" "icon-spec"

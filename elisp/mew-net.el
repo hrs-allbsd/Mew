@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-net.el
 
 ;; Author:  Mew developing team
@@ -13,15 +14,16 @@
 ;;;
 
 (defvar mew-port-db
-  '(("smtp"        25)
-    ("smtps"      465) ; RFC 8314
-    ("pop3"       110)
-    ("pop3s"      995)
-    ("nntp"       119)
-    ("nntps"      563)
-    ("imap"       143)
-    ("imaps"      993)
-    ("submission" 587)))
+  '(("smtp"         25)
+    ("smtps"       465)
+    ("pop3"        110)
+    ("pop3s"       995)
+    ("nntp"        119)
+    ("nntps"       563)
+    ("imap"        143)
+    ("imaps"       993)
+    ("submission"  587)
+    ("submissions" 465))) ;; RFC 8314
 
 (defun mew-serv-to-port (serv)
   (cond
@@ -184,7 +186,7 @@
 	  (setq mew-biff-timer-id (mew-timer (* 60 mew-biff-interval) func)))))
   (let ((ent '(mew-biff-string mew-biff-string)))
     (when (stringp global-mode-string)
-        (setq global-mode-string (list global-mode-string)))
+      (setq global-mode-string (list global-mode-string)))
     (unless (member ent global-mode-string)
       (if global-mode-string
 	  (setq global-mode-string
@@ -201,8 +203,7 @@
 ;;;
 
 (defun mew-time-diff (t1 t2)
-  (/ (+ (* (- (nth 0 t2) (nth 0 t1)) 65536)
-	(- (nth 1 t2) (nth 1 t1)))
+  (/ (mew-time-calc t1 t2)
      86400.0)) ;; one day (* 60 60 24)
 
 (defun mew-expired-p (time keep)
@@ -213,7 +214,7 @@
     (if (>= (mew-time-diff time (mew-file-get-time (nth 0 keep))) (nth 1 keep))
 	t))
    ((integerp keep)
-    (if (>= (mew-time-diff time (current-time)) keep) t))
+    (if (>= (mew-time-diff time nil) keep) t))
    ;; ((eq keep t) t)
    ;; This case MUST not be included because messages marked with 'T'
    ;; will be deleted.
@@ -331,15 +332,6 @@
 	(aset (mew-info pnm) i (aref data i)))
       (rename-file info iwrk 'override)
       t)))
-
-(defun mew-queue-get-next (pnm qfld msgs n func)
-  (let (flushp)
-    (catch 'loop
-      (dolist (msg msgs)
-	(if (mew-queue-insert-file pnm n qfld msg)
-	    (throw 'loop (setq flushp t)))))
-    (if (fboundp func) (funcall func pnm msgs)) ;; set-messages
-    flushp))
 
 (defun mew-queue-backup (work info-suffix) ;; 1.wrk
   (let* ((orig (file-name-sans-extension work)) ;; 1
@@ -474,13 +466,13 @@
 
 (defun mew-summary-retrieve (&optional no-flush)
   "In local folders, retrieve messages to +inbox asynchronously
-according to 'mew-mailbox-type' and 'mew-case'.
-If 'mew-auto-flush-queue' is non-nil, +queue is flushed.
-If called with '\\[universal-argument]', +queue is not flushed.
+according to `mew-mailbox-type' and `mew-case'.
+If `mew-auto-flush-queue' is non-nil, +queue is flushed.
+If called with `\\[universal-argument]', +queue is not flushed.
 
-In remote folders, visit an inbox folder and scan with 'update."
+In remote folders, visit an inbox folder and scan with `update'."
   (interactive "P")
-  (let (case proto inbox case:inbox mailbox)
+  (let ((case nil) (proto nil) inbox case:inbox mailbox)
     (mew-set '(case proto) (mew-summary-case-proto))
     (setq inbox (mew-proto-inbox-folder proto case))
     (cond
@@ -623,7 +615,7 @@ In remote folders, visit an inbox folder and scan with 'update."
 	  (when (and (mew-sinfo-get-disp-msg)
 		     (equal msg (mew-current-get-msg nfid))
 		     (mew-summary-search-msg msg))
-	    ;; The message was truncated probaby because it's too large.
+	    ;; The message was truncated probably because it's too large.
 	    (mew-summary-analyze-again))
 	  (goto-char m))))))
 
@@ -631,10 +623,10 @@ In remote folders, visit an inbox folder and scan with 'update."
   "Retrieve the rest of a truncated('T') message.
 
 In a LOCAL folder: a method to retrieve the message is determined
-by 'mew-case' and 'mew-mailbox-type'.
-If 'mew-pop-delete'/'mew-imap-delete' is non-nil, delete the message
-from the mailbox. When executed with '\\[universal-argument]',
-'mew-pop-delete'/'mew-imap-delete' is considered reversed.
+by `mew-case' and `mew-mailbox-type'.
+If `mew-pop-delete'/`mew-imap-delete' is non-nil, delete the message
+from the mailbox. When executed with `\\[universal-argument]',
+`mew-pop-delete'/`mew-imap-delete' is considered reversed.
 
 In a REMOTE folder: case and protocol are determined by the folder.
 The message in the server side is always retained."
@@ -740,13 +732,13 @@ The message in the server side is always retained."
       (mew-summary-unlock))))
 
 (defun mew-summary-mark-retrieve-message (&optional rev-del)
-  "Retrieve the rest of truncated('T') messages marked with '*'.
+  "Retrieve the rest of truncated(`T') messages marked with `*'.
 
 In a LOCAL folder: a method to retrieve the messages is determined by
-'mew-case' and 'mew-mailbox-type'.
-If 'mew-pop-delete'/'mew-imap-delete' is non-nil, delete the messages
-from the mailbox.  When executed with '\\[universal-argument]',
-'mew-pop-delete'/'mew-imap-delete' is considered reversed.
+`mew-case' and `mew-mailbox-type'.
+If `mew-pop-delete'/`mew-imap-delete' is non-nil, delete the messages
+from the mailbox.  When executed with `\\[universal-argument]',
+`mew-pop-delete'/`mew-imap-delete' is considered reversed.
 
 In a REMOTE folder: case and protocol are determined by the folder.
 The messages in the server side is always retained."
@@ -785,15 +777,15 @@ The messages in the server side is always retained."
 	     (setq case-rtrs (nreverse case-rtrs)))
 	 (while (re-search-forward mew-regex-msg-review nil t)
 	   (when (mew-sumsyn-match mew-regex-sumsyn-long)
-	   (setq uid (mew-sumsyn-message-uid))
-	   (setq msg (mew-sumsyn-message-number))
-	   (setq siz (mew-sumsyn-message-size))
-	   (when (and (mew-msg-validp msg) (mew-msg-truncatedp siz))
-	     (setq rtr (mew-make-refileinfo :uid uid
-					    :size siz
-					    :delete del
-					    :folders (list bnm msg)))
-	     (setq rtrs (cons rtr rtrs))))
+	     (setq uid (mew-sumsyn-message-uid))
+	     (setq msg (mew-sumsyn-message-number))
+	     (setq siz (mew-sumsyn-message-size))
+	     (when (and (mew-msg-validp msg) (mew-msg-truncatedp siz))
+	       (setq rtr (mew-make-refileinfo :uid uid
+					      :size siz
+					      :delete del
+					      :folders (list bnm msg)))
+	       (setq rtrs (cons rtr rtrs))))
 	   (forward-line))
 	 (setq rtrs (nreverse rtrs))))
      (if (and (not rtrs) (not case-rtrs))

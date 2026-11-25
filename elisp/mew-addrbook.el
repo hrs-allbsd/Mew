@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;; mew-addrbook.el --- Aliases and personal information
 
 ;; Author:  Mew developing team
@@ -61,9 +62,6 @@
 (defun mew-addrbook-shortname-get (addr)
   (mew-adbkent-shortname (mew-adbkent-by-addr addr)))
 
-(defun mew-addrbook-addrs-get (addr)
-  (mew-adbkent-addrs (mew-adbkent-by-addr addr)))
-
 (defun mew-addrbook-nickname-get (addr)
   (mew-adbkent-nickname (mew-adbkent-by-addr2 addr)))
 
@@ -80,9 +78,6 @@
 
 (defun mew-autoent-by-shortname (user)
   (assoc user mew-alias-auto-alist))
-
-(defun mew-autoent-shortname (autoent)
-  (nth 0 autoent))
 
 (defun mew-autoent-addr (autoent)
   (nth 1 autoent))
@@ -132,7 +127,7 @@
 ;;;
 
 (defvar mew-alias-expand-prefix nil
-  "A variable to make 'mew-alias-expand' elegant.")
+  "A variable to make `mew-alias-expand' elegant.")
 
 ;; for completion
 (defun mew-addrbook-alias-get (key alist)
@@ -147,15 +142,15 @@
 (defun mew-alias-expand-addrs (key alist count)
   (let ((keys (delete "" (mapcar 'mew-chop (mew-split key ?,))))
 	ret)
-   (dolist (key keys)
-     (setq ret (nconc ret (mew-alias-expand key alist count))))
-   ret))
+    (dolist (key keys)
+      (setq ret (nconc ret (mew-alias-expand key alist count))))
+    ret))
 
 (defun mew-alias-expand (key alist count)
   "Expand KEY to a list of addresses according to ALIST.
-Infinite loop is prevented by COUNT and 'mew-expand-max-depth'.
-Before calling, 'mew-alias-expand-prefix' must be set 'nil'.
-If \"prefix:a,b,c;\" is given, 'mew-alias-expand-prefix'
+Infinite loop is prevented by COUNT and `mew-expand-max-depth'.
+Before calling, `mew-alias-expand-prefix' must be set `nil'.
+If \"prefix:a,b,c;\" is given, `mew-alias-expand-prefix'
 is set to \"prefix\", and (expanded-a expanded-b expanded-c) is
 returned."
   (cond
@@ -233,14 +228,6 @@ returned."
   ;; But we do not care.
   (setq mew-addrbook-alist (cons user-addr mew-addrbook-alist)))
 
-(defun mew-addrbook-alias-delete (addr)
-  (when (and (stringp addr) (string-match "@" addr))
-    (let* ((user (downcase (mew-addrstr-extract-user addr)))
-	   (ent (mew-autoent-by-shortname user)))
-      (when (and ent (string= addr (mew-autoent-addr addr)))
-	(setq mew-addrbook-alist (delete ent mew-addrbook-alist))
-	(setq mew-alias-auto-alist (delq ent mew-alias-auto-alist))))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Loading Addrbook files
@@ -299,11 +286,11 @@ returned."
 	  (while (re-search-forward "[\"']" nil t)
 	    (setq qchar (char-before (point)))
 	    ;; (point) is for backward compatibility
-	    (backward-delete-char 1) ;; delete quote
+	    (delete-char -1) ;; delete quote
 	    (setq beg (point))
 	    (if (not (re-search-forward (char-to-string qchar) nil t))
 		(throw 'quote nil) ;; error
-	      (backward-delete-char 1) ;; delete quote
+	      (delete-char -1) ;; delete quote
 	      (save-restriction
 		(narrow-to-region beg (point))
 		(goto-char (point-min))
@@ -422,7 +409,7 @@ it will add an alias."
   (setq mode-name mname)
   (setq mode-line-buffer-identification (mew-mode-line-id))
   (use-local-map mew-addrbook-mode-map)
-  (mew-run-mode-hooks 'mew-addrbook-mode-hook)
+  (run-mode-hooks 'mew-addrbook-mode-hook)
   (setq buffer-undo-list nil))
 
 (defun mew-addrbook-nconc (ent)

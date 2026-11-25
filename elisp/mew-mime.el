@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-mime.el --- MIME launcher for Mew
 
 ;; Author:  Mew developing team
@@ -9,6 +10,8 @@
 (eval-when-compile
   (require 'mew-env0))
 
+(defvar shr-blocked-images)
+
 (eval-when-compile
   (cond
    ((memq system-type '(windows-nt cygwin))
@@ -17,8 +20,8 @@
     (require 'mew-darwin))
    (t
     (require 'mew-unix)))
-  (mew-no-warning-defun w3m-region)
-  (mew-no-warning-defun w3m-expand-file-name-as-url))
+  (declare-function w3m-region "w3m.el")
+  (declare-function w3m-expand-file-name-as-url "w3m.el"))
 
 (defvar mew-process-file-alist nil)
 
@@ -34,11 +37,6 @@
 
 (defun mew-progspec-get-args (def)
   (if (listp def) (nth 1 def)))
-
-(defun mew-progspec-get-async (def)
-  (cond
-   ((stringp def) t)
-   ((listp def) (nth 2 def))))
 
 (defun mew-progsec-args-convert (args arg)
   (let (converted ret)
@@ -260,7 +258,9 @@
 					mew-use-text/html-string-type
 					mew-use-text/html-list-type)))
 	      (progn
-		(funcall mew-prog-text/html start (point-max))
+		(save-window-excursion
+		  (let ((shr-blocked-images mew-html-blocked-images))
+		    (funcall mew-prog-text/html start (point-max))))
                 (delete-trailing-whitespace start (point-max))
 		(mew-highlight-body-region start (point-max)))
 	    (mew-message-for-summary "To parse HTML, type '\\[mew-summary-analyze-again]'"))))
@@ -426,12 +426,13 @@
       (insert "\n")
       (mew-mime-part-messages t))))
 
-(defun mew-mime-image/*-ext (cache begin end &optional _params fname _ct _cte)
-  (let ((file (mew-make-temp-name fname)))
-    (with-current-buffer cache
-      (mew-flet
-       (write-region begin end file nil 'no-msg)))
-    (mew-mime-image-ext file)))
+(defun mew-mime-image/*-ext (cache begin end &optional _params fname ct _cte)
+  (when (mew-mime-suffix-agree-p fname (or ct "Image"))
+    (let ((file (mew-make-temp-name fname)))
+      (with-current-buffer cache
+	(mew-flet
+	 (write-region begin end file nil 'no-msg)))
+      (mew-mime-image-ext file))))
 
 (defun mew-mime-image-ext (file)
   (let* ((spec mew-prog-image/*-ext)
@@ -531,12 +532,6 @@
 
 (defun mew-mime-application/msoffice (prog cache begin end &optional _parameter)
   (let ((doit t) file1 file2)
-    (unless mew-internal-utf-8p
-      (condition-case nil
-	  (require 'un-define)
-	(file-error
-	 (setq doit nil)
-	 (insert "To display this, install Mule-UCS for UTF-8.\n"))))
     (unless (mew-which-exec prog)
       (setq doit nil)
       (insert "To display this, install \"" prog "\".\n"))
@@ -609,7 +604,7 @@
 	  (insert-file-contents file2)))
       (if (file-exists-p file1) (delete-file file1))
       (if (file-exists-p file2) (delete-file file2))
-  (message "Displaying a PDF document...done"))))
+      (message "Displaying a PDF document...done"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -673,10 +668,10 @@ Content-Type is automatically asked. And if it has both
 internal and external visualization mechanisms, you are asked
 which you want to use.
 
-If executed with '\\[universal-argument]', you can specify a
+If executed with `\\[universal-argument]', you can specify a
 command to be executed.
 
-See 'mew-mime-content-type' to know how actions can be defined."
+See `mew-mime-content-type' to know how actions can be defined."
   (interactive "P")
   (mew-summary-msg-or-part
    (let* ((fld (mew-summary-folder-name))
@@ -794,9 +789,39 @@ See 'mew-mime-content-type' to know how actions can be defined."
 	(funcall program cache begin end params))))))
 
 ;;; external
+(defun mew-mime-suffix-agree-p (fname ct)
+  "Return t if the suffix of FNAME fits CT, or the user accepts it.
+Viewers such as open and fiber choose an application by the suffix,
+which comes from the message, not by CT."
+  (let* ((case-fold-search t)
+	 (major (downcase (car (split-string ct "/")))))
+    (cond
+     ((or (null fname) (not (string-match "\\.[^.]+\\'" fname))) t)
+     ((catch 'found
+	(dolist (ent mew-mime-content-type)
+	  (let ((ect (nth 0 ent)) (regex (nth 1 ent)))
+	    (and (stringp ect) (stringp regex)
+		 (string-match regex fname)
+		 ;; audio/x-wav for audio/wav and the like
+		 (or (string-match (concat "\\`" ect "\\'") ct)
+		     (and (member major '("audio" "image" "video"))
+			  (string-match (concat "\\`" major "/") ect)))
+		 (throw 'found t)))))
+      t)
+     ((y-or-n-p (format "%s does not look like %s. Open it anyway? "
+			fname ct))
+      t)
+     (t
+      (message "Not opened")
+      nil))))
+
 (defun mew-summary-execute-program (program ct ctl cache begin end _params fname options async)
-  (if (not (mew-which-exec program))
-      (message "%s does not exist" program)
+  (cond
+   ((not (mew-which-exec program))
+    (message "%s does not exist" program))
+   ((not (mew-mime-suffix-agree-p fname ct))
+    ())
+   (t
     (let ((file (mew-make-temp-name fname))
 	  wcs)
       (with-current-buffer cache
@@ -826,7 +851,7 @@ See 'mew-mime-content-type' to know how actions can be defined."
 	  (write-region begin end file nil 'no-msg))
 	(if async
 	    (mew-mime-start-process program options file)
-	  (mew-mime-call-process program options file))))))
+	  (mew-mime-call-process program options file)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -849,17 +874,21 @@ See 'mew-mime-content-type' to know how actions can be defined."
 	 (syntax (mew-cache-decode-syntax cache))
 	 (stx (mew-syntax-get-entry syntax nums))
 	 (ct (mew-syntax-get-value (mew-syntax-get-ct stx) 'cap))
-	 (file0 (mew-syntax-get-param (mew-syntax-get-cdp stx) "filename"))
+	 (file0 (mew-syntax-get-filename (mew-syntax-get-cdp stx)
+					 (mew-syntax-get-ct stx)))
 	 (beg (mew-syntax-get-begin stx))
 	 (end (mew-syntax-get-end stx))
 	 (size (- end beg))
 	 (dir mew-temp-dir)
 	 file size1 end1)
-    (if (not (mew-ct-zip-p ct))
-	(message "Cannot unzip"))
-    (setq file (mew-unzip-file cache beg end dir file0))
-    (if (not file)
-	(message "unzip failed")
+    (cond
+     ((not (mew-ct-zip-p ct))
+      (message "Cannot unzip"))
+     ((null file0)
+      (message "No file name to unzip"))
+     ((null (setq file (mew-unzip-file cache beg end dir file0)))
+      (message "unzip failed"))
+     (t
       (let ((ct (mew-ctdb-ct (mew-ctdb-by-file file)))
 	    cs)
 	(unless ct
@@ -895,9 +924,9 @@ See 'mew-mime-content-type' to know how actions can be defined."
 	  (mew-decode-syntax-print (current-buffer)
 				   mew-decode-syntax
 				   (mew-xinfo-get-multi-form)
-				 (mew-xinfo-get-icon-spec))
+				   (mew-xinfo-get-icon-spec))
 	  (goto-char current)
-	  (mew-summary-display 'redisplay))))))
+	  (mew-summary-display 'redisplay)))))))
 
 (defun mew-decode-syntax-adjust (val threshold inc)
   (if (> val threshold) (+ val inc) val))
@@ -920,36 +949,65 @@ See 'mew-mime-content-type' to know how actions can be defined."
 
 (defun mew-decode-syntax-adjust-multi (syntax threshold inc)
   (mew-decode-syntax-adjust-single syntax threshold inc)
-    (let ((i mew-syntax-magic)
-	  (len (length syntax))
-	  part)
-      (while (< i len)
-	(setq part (aref syntax i))
-	(cond
-	 ((mew-syntax-singlepart-p part)
-	  (mew-decode-syntax-adjust-single part threshold inc))
-	 ((mew-syntax-multipart-p part)
-	  (mew-decode-syntax-adjust-multi part threshold inc))
-	 ((mew-syntax-message-p part)
-	  (mew-decode-syntax-adjust-message part threshold inc)))
-	(setq i (1+ i)))))
+  (let ((i mew-syntax-magic)
+	(len (length syntax))
+	part)
+    (while (< i len)
+      (setq part (aref syntax i))
+      (cond
+       ((mew-syntax-singlepart-p part)
+	(mew-decode-syntax-adjust-single part threshold inc))
+       ((mew-syntax-multipart-p part)
+	(mew-decode-syntax-adjust-multi part threshold inc))
+       ((mew-syntax-message-p part)
+	(mew-decode-syntax-adjust-message part threshold inc)))
+      (setq i (1+ i)))))
+
+(defun mew-unzip-filter (process string)
+  (mew-filter
+   (goto-char (point-max))
+   (insert string)
+   (cond
+    ((string-match "incorrect" string)
+     ;; unzip asks again when the password is wrong.  Answering again
+     ;; only makes it ask once more, so give up here.  Otherwise it
+     ;; would sit on the pty waiting for an answer.
+     (setq mew-process-password nil)
+     (delete-process process))
+    ((and mew-process-password (string-match "password:" string))
+     (process-send-string process (concat mew-process-password "\n"))))))
+
+(defun mew-unzip-extracted-file ()
+  "Return the file name which unzip reported on its last line."
+  (goto-char (point-max))
+  (forward-line -1)
+  (beginning-of-line)
+  ;; "\r" has to be excluded because the output comes through a pty.
+  (if (looking-at "^ *[a-z]+: \\([^ \r\n]+\\)")
+      (mew-match-string 1)))
 
 (defun mew-unzip-file (buf beg end dir file)
   (let* ((zipfile (expand-file-name file dir))
 	 (encrypted (mew-zip-encrypted-p buf beg))
-	 (password (if encrypted (read-passwd "Zip password: ")))
-	 (args0 (list "-o" "-d" dir zipfile))
-	 (args (if password (cons "-P" (cons password args0)) args0)))
+	 (mew-process-password (if encrypted (read-passwd "Zip password: ")))
+	 ;; The password is answered to the prompt of unzip through a
+	 ;; pty.  "-P" would put it on the command line, where "ps"
+	 ;; shows it to everybody on the machine.
+	 (process-connection-type mew-connection-type2)
+	 (args (list "-o" "-d" dir zipfile))
+	 pro)
     (with-current-buffer buf
       (mew-frwlet mew-cs-dummy mew-cs-binary
 	(write-region beg end zipfile nil 'no-msg)))
     (with-temp-buffer
-      (apply 'call-process "unzip" nil t nil args)
-      (goto-char (point-max))
-      (forward-line -1)
-      (beginning-of-line)
-      (when (looking-at "^ *[a-z]+: \\([^ ]+\\)")
-	(mew-match-string 1)))))
+      (if (null mew-process-password)
+	  (apply 'call-process "unzip" nil t nil args)
+	(setq pro (apply 'start-process "unzip" (current-buffer) "unzip" args))
+	(mew-process-silent-exit pro)
+	(set-process-sentinel pro 'ignore) ;; no "Process unzip finished"
+	(set-process-filter pro 'mew-unzip-filter)
+	(mew-process-wait pro))
+      (mew-unzip-extracted-file))))
 
 (defun mew-zip-encrypted-p (buf beg)
   (with-current-buffer buf

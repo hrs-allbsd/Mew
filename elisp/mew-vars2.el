@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-vars2.el
 
 ;; Author:  Mew developing team
@@ -176,7 +177,7 @@ for privacy reasons.")
     (nickname  mew-addrbook-nickname-get)
     (name      mew-addrbook-name-get))
   "Function database to get each field of Addrbook.
-'shortname, 'address, 'username, 'nickname, and 'name is defined.")
+`shortname', `address', `username', `nickname', and `name' is defined.")
 
 (defun mew-addrbook-func (key)
   (mew-alist-get-value (assq key mew-addrbook-switch)))
@@ -214,7 +215,7 @@ for privacy reasons.")
 
 (defvar mew-mime-content-type-multipart-list
   `(,mew-ct-mlm ,mew-ct-mla)
-  "Candidate of 'Content-Type: Multipart/' when CT: is changed
+  "Candidate of `Content-Type: Multipart/' when CT: is changed
 in draft buffer.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -288,11 +289,12 @@ in draft buffer.")
   "\\<mew-summary-mode-map>Database for MIME content type.
 This is a list of entries which consist of <content-type>,
 <regular expression of file suffix>, <content-transfer-encoding>,
-<symbol for visualizer>, <symbol for icon>, <auxiliary data>.
+<symbol for visualizer>, <unused (was a symbol for icon)>,
+<auxiliary data>.
 
 Here is an example:
 
-	(\"image/png\" \"\\\\.png$\" mew-b64 mew-prog-image mew-icon-image png)
+	(\"image/png\" \"\\\\.png$\" mew-b64 mew-prog-image nil png)
 
 This database is used both when visualizing and composing. For
 example, when visualizing, a visualizer is chosen according to
@@ -300,13 +302,13 @@ its <content-type>. When composing, content-type is selected
 according to the suffix of the file to be attached with <regular
 expression of file suffix>.
 
-For <content-transfer-encoding>, 'nil', 'mew-b64', or 'mew-qp'
-should be specified. 'mew-b64' and 'mew-qp' means Base64 and
+For <content-transfer-encoding>, `nil', `mew-b64', or `mew-qp'
+should be specified. `mew-b64' and `mew-qp' means Base64 and
 Quoted-Printable, respectively. This is used as an appropriate
 content-transfer-encoding when composing.
 
 Each symbol specified at <symbol for visualizer> should have a value
-whose format is one of followings:
+whose format is one of the following:
 
 - \"prog\"
 	\"prog\" is an external program.
@@ -329,7 +331,7 @@ whose format is one of followings:
 - (nil (\"prog\" args async))
 	Equivalent to (\"prog\" args async).
 - (nil func2)
-	(1) Displayed 'type \\[mew-summary-execute-external]'.
+	(1) Displayed `type \\[mew-summary-execute-external]'.
 	(2) <func2> is called.
 - (func1 func2)
 	(1) <func1> is called.
@@ -347,8 +349,8 @@ whose format is one of followings:
 	    If the original content-type is Application/Octet-Stream,
 	    you are asked to choose <func1> or \"prog\".
 
-Note that (1) indicates the action for '\\[mew-summary-display]' and
-\(2) indicates the action for '\\[mew-summary-execute-external]'.
+Note that (1) indicates the action for `\\[mew-summary-display]' and
+\(2) indicates the action for `\\[mew-summary-execute-external]'.
 
 If you want to add an entry for new content-type, please let the author
 know. Such an entry should be shared by all users and be included in
@@ -375,15 +377,12 @@ the next version of Mew.")
 	(eval val)
       val)))
 
-(defun mew-ctdb-icon (attr)
-  (symbol-value (nth 4 attr)))
-
 (defun mew-mime-image-format-name (ct)
   (nth 5 (mew-ctdb-by-ct ct)))
 
 (defvar mew-mime-content-type-for-ooffice nil
   "A list of (content-type suffix) for OpenOffice.org to be prepended
-'mew-mime-content-type'")
+`mew-mime-content-type'")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -489,6 +488,7 @@ the next version of Mew.")
     (,mew-in-reply-to:   unstruct   unstruct)
     (,mew-x-face:	 unstruct   unstruct)
     (,mew-face:          unstruct   unstruct)
+    (,mew-bimi-indicator:      unstruct unstruct)
     ("Authentication-Results:" unstruct struct2) ;; capitalized
     ("Domainkey-Signature:"    unstruct unstruct) ;; capitalized
     ("Dkim-Signature:"         unstruct unstruct)) ;; capitalized
@@ -557,16 +557,17 @@ the next version of Mew.")
      ("hardfail" mew-face-header-xmew-bad
       "fail" mew-face-header-xmew-bad
       "softfail" mew-face-header-xmew-bad))
+    ("^BIMI-" nil)
     ("^Delivered-" nil)
     ("^List-" nil) ;; RFC 2369
-;;    ("^Content-" t)
+    ;;    ("^Content-" t)
     ("^\\(Mime-Version\\|Lines\\):$" nil)
     ("^From$" nil)
     ("^Status:$" nil)
     ("^Face:$" nil
      mew-face-header-private
      mew-face-header-marginal)
-    ("^\\(X\\|Original\\)-" nil
+    ("^\\(X\\|Original\\|UI\\)-" nil
      mew-face-header-private
      mew-face-header-marginal))
   "*An alist of field spec for Message mode. Each spec
@@ -575,14 +576,14 @@ and face-for-value. Fields whose visible-p is t are displayed in
 Message mode in the defined order. Fields whose visible-p is nil are
 hidden in Message mode. Type DEL to see them. Fields not matched
 to field-regular-expressions are operated by the value of
-'mew-field-other-visible'. If face-for-key is omitted,
-'mew-face-header-key' is used. If face-for-value is not
+`mew-field-other-visible'. If face-for-key is omitted,
+`mew-face-header-key' is used. If face-for-value is not
 present, mew-face-header-marginal is used."
   :group 'mew-highlight
   :type '(alist :key-type regexp
                 :value-type
-                  (choice (list boolean)
-                          (list boolean face face))))
+                (choice (list boolean)
+                        (list boolean face face))))
 
 ;; cons the position to the spec.
 (defun mew-nspec-by-key (key)
@@ -620,10 +621,10 @@ present, mew-face-header-marginal is used."
 	(face-val (intern (concat "mew-face-color-" val-color (if bold "-bold")))))
     (unless (facep face-key)
       (make-empty-face face-key)
-      (face-spec-set face-key (list (mew-face-spec-func t (mew-face-spec-primitive key-color bold)))))
+      (face-spec-set face-key (list (cons t (mew-face-spec-primitive key-color bold)))))
     (unless (facep face-val)
       (make-empty-face face-val)
-      (face-spec-set face-val (list (mew-face-spec-func t (mew-face-spec-primitive val-color bold)))))
+      (face-spec-set face-val (list (cons t (mew-face-spec-primitive val-color bold)))))
     (setq mew-header-color-alist
 	  (cons (list (capitalize field) face-key face-val) mew-header-color-alist))))
 
@@ -743,10 +744,10 @@ For more detail, see mew-mark-put-mark and mew-mark-afterstep.")
     (,mew-mark-delete "delete" 2 nil t   nil mew-mark-exec-delete nil)
     (,mew-mark-unlink "unlink" 2 nil t   nil mew-mark-exec-unlink nil)
     (,mew-mark-refile "refile" 2 t   mew-mark-kill-refile mew-mark-unrefile
-		                     mew-mark-exec-refile mew-mark-sanity-refile))
+		      mew-mark-exec-refile mew-mark-sanity-refile))
   "*A list of lists which consists of
 mark, name, level, statefullp, kill-line-p,
-undo-func, exec-func, and sanity-fucn.")
+undo-func, exec-func, and sanity-func.")
 
 ;;
 
@@ -785,12 +786,12 @@ undo-func, exec-func, and sanity-fucn.")
 
 (defvar mew-inbox-action-alist nil
   "*This variable controls actions when retrieving messages.
-Currently this works when '\\<mew-summary-mode-map>\\[mew-summary-retrieve]'.
-You can put any marks, typically 'o' and 'D' according to message
+Currently this works when `\\<mew-summary-mode-map>\\[mew-summary-retrieve]'.
+You can put any marks, typically `o' and `D' according to message
 headers.
 
 This value must be a list of entries. An entry is a list whose first
-element is a field defined in 'mew-scan-fields'.
+element is a field defined in `mew-scan-fields'.
 
 If the second element is a list, the first element of the list must be
 a mark (e.g. ?D) or a string which is a comma separated folders (e.g
@@ -798,12 +799,12 @@ a mark (e.g. ?D) or a string which is a comma separated folders (e.g
 expressions to be matched to the value of the field.
 
 With the following configuration, Mew marks messages whose Subject:
-matches \"adult\" or \"money\" with 'D'. And Mew marks messages whose
-Subject is \"daily log\" with 'o' to be refiled \"+log\". Also Mew
-marks messages whose Content-Type: contains \"gb2312\" with 'D'.
+matches \"adult\" or \"money\" with `D'. And Mew marks messages whose
+Subject is \"daily log\" with `o' to be refiled \"+log\". Also Mew
+marks messages whose Content-Type: contains \"gb2312\" with `D'.
 
 \(setq mew-inbox-action-alist
-      '((\"Subject:\"
+      \\='((\"Subject:\"
 	 (?D \"adult\" \"money\")
 	 (\"+log\" \"daily log\"))
 	(\"Content-Type:\"
@@ -812,7 +813,7 @@ marks messages whose Content-Type: contains \"gb2312\" with 'D'.
 If the second element of the entry is a symbol, it will be called as a
 function which returns nil or a mark or a string.
 
-If you are using 'spamassassin' which adds the \"X-Spam-Flag:\" field
+If you are using `spamassassin' which adds the \"X-Spam-Flag:\" field
 to messages and puts them in your mailbox, configure as follows:
 
 \(setq mew-spam: \"X-Spam-Flag:\")
@@ -822,14 +823,14 @@ to messages and puts them in your mailbox, configure as follows:
     (if (string-match \"yes\" val) ?D)))
 
 \(setq mew-inbox-action-alist
-      '((\"X-Spam-Flag:\" mew-spam-assassin)))
+      \\='((\"X-Spam-Flag:\" mew-spam-assassin)))
 
 With this configuration, messages with the \"X-Spam-Flag:\" whose
-value is \"Yes\" are automatically marked with 'D' since the
-'mew-spam-assassin' function returns 'D' marks when the value is
+value is \"Yes\" are automatically marked with `D' since the
+`mew-spam-assassin' function returns `D' marks when the value is
 \"Yes\".
 
-If you are using 'bogofilter' which adds the \"X-Bogosity:\" field
+If you are using `bogofilter' which adds the \"X-Bogosity:\" field
 to messages and puts them to your mailbox, configure as follows:
 
 \(setq mew-spam: \"X-Bogosity:\")
@@ -839,7 +840,7 @@ to messages and puts them to your mailbox, configure as follows:
     (if (string-match \"yes\" val) ?D)))
 
 \(setq mew-inbox-action-alist
-      '((\"X-Bogosity:\" mew-spam-bogofilter)))
+      \\='((\"X-Bogosity:\" mew-spam-bogofilter)))
 ")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -868,9 +869,6 @@ to messages and puts them to your mailbox, configure as follows:
 
 (defun mew-proto-to-go (fld)
   (mew-proto-to-body fld 1))
-
-(defun mew-proto-to-refile (fld)
-  (mew-proto-to-body fld 2))
 
 (defun mew-proto-to-flush (fld)
   (mew-proto-to-body fld 3))
@@ -919,14 +917,16 @@ to messages and puts them to your mailbox, configure as follows:
   "*Alist of config. This is a list of
 	(<case> (<key> <value>) (<key> <value>) ...).
   - <case> is a string of case.
-  - <key> is a symbol of Mew value with the 'mew-' prefix removed.
+  - <key> is a symbol of Mew value with the `mew-' prefix removed.
   - <value> is a string.
 
 Currently, the following keys are supported:
 name, user, mail-domain,
-cc, fcc, dcc, reply-to, organization, header-alist, proto,
+cc, bcc, fcc, dcc, reply-to, organization, header-alist, proto,
+use-x-mailer, use-format-flowed,
+safe-addresses, safe-domains, warn-addresses, warn-domains,
 smtp-server, smtp-port, smtp-ssh-server, smtp-ssl, smtp-ssl-port,
-smtp-user, smtp-auth-list,
+smtp-user, smtp-auth-list, use-smtp-auth, smtp-auth-plain-authorize-id,
 smtp-msgid-user, smtp-msgid-domain, smtp-helo-domain, smtp-mail-from,
 pop-server, pop-port, pop-ssh-server, pop-ssl, pop-ssl-port,
 pop-user, pop-auth, pop-auth-list,
@@ -935,18 +935,26 @@ pop-proxy-server, pop-proxy-port,
 imap-server, imap-port, imap-ssh-server, imap-ssl, imap-ssl-port,
 imap-user, imap-auth, imap-auth-list,
 imap-size, imap-header-only, imap-delete,
-imap-trash-folder, imap-queue-folder, imap-spam-field, imap-spam-word,
+imap-inbox-folder, imap-trash-folder, imap-trash-folder-list,
+imap-queue-folder, imap-spam-folder, imap-spam-field, imap-spam-word,
+imap-spam-pattern, imap-friend-folder, imap-prefix-list,
 imap-proxy-server, imap-proxy-port,
 nntp-server, nntp-port, nntp-ssh-server, nntp-ssl, nntp-ssl-port,
-nntp-user, nntp-size, nntp-header-only,
+nntp-user, nntp-size, nntp-header-only, nntp-newsgroup,
 nntp-msgid-user, nntp-msgid-domain,
+ssh-prog, ssh-prog-args, ssh-prog-ver,
 prog-ssl-arg, ssl-cert-directory, ssl-verify-level,
 ssl-algorithm-priority, ssl-client-keycert-list, ssl-trustfiles,
-inbox-folder, queue-folder, postq-folder,
+ssl-proxy-server, ssl-proxy-port,
+oauth2-client-id, oauth2-client-secret,
+oauth2-redirect-url, oauth2-redirect-port,
+oauth2-auth-url, oauth2-token-url, oauth2-resource-url,
+inbox-folder, queue-folder, postq-folder, inbox-action-alist,
 mailbox-type, mbox-command, mbox-command-arg,
 signature-file, content-type, refile-guess-alist,
 spam-prog, spam-prog-args, ham-prog, ham-prog-args,
-use-old-pgp, pgp-signer, smime-signer, privacy-method,
+use-old-pgp, pgp-signer, smime-signer,
+draft-privacy-method,
 protect-privacy-always, protect-privacy-always-type,
 protect-privacy-encrypted, protect-privacy-encrypted-type,
 protect-privacy-with-old-pgp-signature
@@ -958,7 +966,7 @@ message-id = *random*.nntp-msgid-user@nntp-msgid-domain
 An example is as follows:
 
 \(setq mew-config-alist
-      '((mew
+      \\='((mew
 	 (mail-domain  \"example.org\")
 	 (inbox-folder \"+inbox-mew\"))
 	(keio
@@ -969,7 +977,7 @@ An example is as follows:
 	 (name         \"Kazu Yamamoto\")
 	 (mail-domain  \"example.jp\"))))
 "
-;; bcc can be used but not recommended
+  ;; bcc can be used but not recommended
   :group 'mew-env
   :type '(alist :key-type string
                 :value-type (repeat (cons string string))))

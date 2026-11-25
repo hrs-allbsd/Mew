@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-refile.el --- Refile for Mew
 
 ;; Author:  Mew developing team
@@ -349,7 +350,7 @@ values."
 (defun mew-refile-guess-by-newsgroups ()
   ;; Guess folders by the Newsgroups field with folder alist.
   (let* ((newsgroups (mew-addrstr-parse-value-list2
-		     (mew-header-get-value mew-newsgroups:)))
+		      (mew-header-get-value mew-newsgroups:)))
 	 (proto mew-inherit-refile-proto)
 	 (case mew-inherit-refile-case)
 	 (alist (mew-proto-folder-alist proto case)) ;; local folders
@@ -375,6 +376,9 @@ values."
 	 (from (downcase (or addr (mew-header-parse-address mew-from:) ""))))
     (if mew-refile-guess-strip-domainpart
 	(setq from (mew-addrstr-extract-user from)))
+    ;; From: is the sender's: keep the guess one level below fld.
+    (setq from (replace-regexp-in-string "[/\\]" "_" from))
+    (setq from (replace-regexp-in-string "\\`\\.+" "" from))
     (mew-concat-folder2 fld from case)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -575,13 +579,13 @@ Return t if exists or created. Otherwise, return nil."
 ;;;
 
 (defun mew-summary-copy ()
-  "Put the refile mark(default is 'o') on this message with
+  "Put the refile mark(default is `o') on this message with
 the current folder as a candidate in addition to guessed folders."
- (interactive)
- (mew-summary-msg-or-part
-  (mew-summary-refilable
-   (mew-summary-refile-body
-    nil nil nil nil (mew-summary-folder-name)))))
+  (interactive)
+  (mew-summary-msg-or-part
+   (mew-summary-refilable
+    (mew-summary-refile-body
+     nil nil nil nil (mew-summary-folder-name)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -592,15 +596,15 @@ the current folder as a candidate in addition to guessed folders."
   (concat mew-buffer-prefix "refile " fld))
 
 (defun mew-summary-refile (&optional report)
- "Put the refile mark(default is 'o') on this message. If already
-marked with 'o', it prints where this message will be refiled. This
+  "Put the refile mark(default is `o') on this message. If already
+marked with `o', it prints where this message will be refiled. This
 can overlay other marks. When it overlays, the cursor stays on the
 message. If it marks newly, displays the next message. If executed
-with '\\[universal-argument]', it displays how the refile rules work in Message mode."
- (interactive "P")
- (mew-summary-msg-or-part
-  (mew-summary-refilable
-   (if report (mew-summary-refile-report) (mew-summary-refile-body)))))
+with `\\[universal-argument]', it displays how the refile rules work in Message mode."
+  (interactive "P")
+  (mew-summary-msg-or-part
+   (mew-summary-refilable
+    (if report (mew-summary-refile-report) (mew-summary-refile-body)))))
 
 (defvar mew-override-body-open "<")
 (defvar mew-override-body-close "> ")
@@ -643,7 +647,7 @@ with '\\[universal-argument]', it displays how the refile rules work in Message 
 	(goto-char (point-max))
 	(mew-insert-buffer-substring cbuf beg end)
 	(insert "== src=" fld " dst=" folders-str " id=" msg-id)
-	(insert " date=" (mew-time-ctz-to-logtime (current-time)) "\n")))))
+	(insert " date=" (mew-time-ctz-to-logtime nil) "\n")))))
 
 (defun mew-summary-refile-unlog (fld)
   (save-excursion
@@ -826,10 +830,10 @@ refile folder."
 
 (defun mew-summary-auto-refile (&optional mew-mark-review-only)
   "Refile each message in the folder automatically. If
-'mew-refile-auto-refile-skip-any-mark' is non-nil,
+`mew-refile-auto-refile-skip-any-mark' is non-nil,
 any previously marked message will be skipped.
-If '\\[universal-argument]' is specified, only messages marked with
-'mew-mark-review' will be concerned."
+If `\\[universal-argument]' is specified, only messages marked with
+`mew-mark-review' will be concerned."
   (interactive "P")
   (mew-summary-refilable
    (mew-decode-syntax-delete)

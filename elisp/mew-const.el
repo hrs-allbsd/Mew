@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-const.el
 
 ;; Author:  Mew developing team
@@ -72,6 +73,7 @@
 (defconst mew-x-mailer:    "X-Mailer:")
 (defconst mew-x-face:      "X-Face:")
 (defconst mew-face:        "Face:")
+(defconst mew-bimi-indicator: "BIMI-Indicator:")
 (defconst mew-x-mew:       "X-Mew:")
 (defconst mew-x-mew-uidl:  "X-Mew-Uidl:")
 (defconst mew-x-mew-ref:   "X-Mew-Ref:")
@@ -219,7 +221,7 @@
 
 ;; fld msg
 (defun mew-regex-sumsyn-msg (msg)
-                           (format "\r \\([^ \n]*\\) \\(%s\\) " msg))
+  (format "\r \\([^ \n]*\\) \\(%s\\) " msg))
 
 (defun mew-summary-search-msg (msg)
   (let ((regex (mew-regex-sumsyn-msg msg)))
@@ -250,11 +252,7 @@
 ;;;
 ;;;
 
-(defconst mew-regex-msg-icon  "^\\([0-9]+\\) ")
 (defconst mew-regex-part      "^.... \\([.0-9]+\\) ")
-(defconst mew-regex-part-icon "<\\([.0-9]+\\)>")
-
-(defun mew-regex-jmp-part (part) (format "^.... \\(%s\\) " part))
 
 ;; [\033\200-\377] does not work due to the multibyte
 (defconst mew-regex-esc-or-nonascii "[^\000-\032\034-\177]") ;; \033 = esc
@@ -262,7 +260,7 @@
 (defconst mew-regex-singlebyte-nonascii
   "\\(\\`\\|[\000-\177]\\)[^\000-\177]\\([\000-\177]\\|\\'\\)")
 
-;; The followings MUST contain "+" for conversion.
+;; The following MUST contain "+" for conversion.
 ;; \011 = tab, \012 = lf
 (defconst mew-regex-ctls "[\000-\037\177]+")
 (defconst mew-regex-ctls-wo-tab "[\000-\010\012-\037\177]+")
@@ -291,7 +289,7 @@
 (defconst mew-folder-virtual "*")
 (defconst mew-folder-prefixes
   `(,mew-folder-local ,mew-folder-pop ,mew-folder-imap
-    ,mew-folder-nntp ,mew-folder-virtual))
+		      ,mew-folder-nntp ,mew-folder-virtual))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -321,14 +319,12 @@
 (defconst mew-inherit-prefetching nil)
 (defconst mew-inherit-refile-case nil)
 (defconst mew-inherit-refile-proto nil)
-(defconst mew-inherit-grep-cmd nil)
 (defconst mew-inherit-after-marking nil)
 (defconst mew-inherit-pick-tokens nil)
 (defconst mew-inherit-pick-ret nil)
 (defconst mew-inherit-pick-mewlp nil)
 (defconst mew-inherit-pick-omit-and nil)
 (defconst mew-inherit-pick-omit-and2 nil)
-(defconst mew-inherit-submission nil)
 (defconst mew-inherit-complete-folder nil)
 
 (provide 'mew-const)

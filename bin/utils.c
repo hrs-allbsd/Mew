@@ -15,9 +15,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 
-#if !HAVE_MEMMOVE
-#define memmove(d, s, n) bcopy((s), (d), (n))
-#endif
+/* memmove() is standard C (C89), so no fallback to bcopy() is needed. */
 
 char *warn_prog;
 
@@ -67,55 +65,31 @@ warn_exit(const char *fmt, ...)
 	exit(EXIT_FAILURE);
 }
 
-#ifndef HAVE_SNPRINTF
-public int
-snprintf(char *buf, int len, const char *fmt, ...)
-{
-	int ret;
-	va_list ap;
-
-	va_start(ap, fmt);
-	ret = vsprintf(buf, fmt, ap);
-	va_end(ap);
-	return ret;
-}
-#endif
-
 #ifndef HAVE_FGETLN
+/* As BSD's fgetln: *len bytes of a line, NULs and all, not terminated. */
 private char*
 fgetln(FILE *fp, size_t *len)
 {
 	static size_t bufsize = 0;
 	static char *buf = NULL;
-	char tmp[BUFSIZ];
-	size_t readlen;
-
-	if (buf == NULL) {
-		bufsize = BUFSIZ;
-		MALLOC(buf, bufsize);
-	}
+	int c;
 
 	*len = 0;
-	while (1) {
-		if (fgets(tmp, BUFSIZ, fp) == NULL)
-			return NULL;
-		readlen = strlen(tmp);
-
-		if (*len + readlen > bufsize) {
+	while ((c = getc(fp)) != EOF) {
+		if (*len == bufsize) {
 			bufsize += BUFSIZ;
 			REALLOC(buf, bufsize);
 		}
-		memmove(&buf[*len], tmp, readlen);
-		*len += readlen;
-		if (readlen < BUFSIZ - 1 || tmp[BUFSIZ - 2] == '\n')
+		buf[(*len)++] = c;
+		if (c == '\n')
 			break;
 	}
-	return buf;
+	return *len > 0 ? buf : NULL;
 }
 #endif
 
 char*
-Getline(FILE* fp)
+Getline(FILE* fp, size_t *lenp)
 {
 	char *s, *t;
 	size_t len;
@@ -124,6 +98,7 @@ Getline(FILE* fp)
 	MALLOC(s, len+1);
 	memmove(s, t, len);
 	s[len] = '\0';
+	*lenp = len;
 	return s;
 }
 
@@ -147,6 +122,9 @@ Getopt(int argc, char *argv[], const char *fmt)
 		return EOF;
 	if (*(p + 1) != NUL)
 		warn_exit("unknown long option '-%s'.", p);
+	/* ':' marks an argument in fmt; it is never an option letter. */
+	if (c == ':')
+		warn_exit("unknown option '-%c'.", c);
 	if ((q = strchr(fmt, c)) == NULL)
 		warn_exit("unknown option '-%c'.", c);
 	if (++q != NULL && *q == ':') {

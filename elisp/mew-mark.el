@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-mark.el --- Marking for Mew Summary and Virtual mode
 
 ;; Author:  Mew developing team
@@ -92,7 +93,7 @@ If optional argument NO-MSG is non-nil, no message is displayed."
 ;;
 
 (defun mew-summary-mark-undo-all ()
-  "Unmark all message marked with 'o' or 'D' or 'X'."
+  "Unmark all message marked with `o' or `D' or `X'."
   (interactive)
   (message "Unmarking...")
   (dolist (mark mew-summary-mark-undo-marks)
@@ -171,13 +172,6 @@ If optional argument NO-MSG is non-nil, no message is displayed."
 ;;; Entire buffer
 ;;;
 
-(defun mew-summary-mark-exist-p (mark-list)
-  "See if this Summary mode has one or more marked messages."
-  (let ((regex (mew-mark-list-regex mark-list)))
-    (save-excursion
-      (goto-char (point-min))
-      (re-search-forward regex nil t))))
-
 (defun mew-summary-mark-collect (mark &optional begin end)
   "This function returns a list of message number."
   (save-excursion
@@ -216,24 +210,10 @@ cons pairs of folder name and message number."
 	(forward-line))
       (nreverse ret))))
 
-(defun mew-summary-mark-collect5 ()
-  (save-excursion
-    (let ((beg (mew-net-invalid-cache-start))
-	  ret mrk msg)
-      (when beg
-	(goto-char beg)
-	(while (re-search-forward mew-regex-mark nil t)
-	  (setq mrk (mew-sumsyn-mark))
-	  (setq msg (mew-summary-message-number))
-	  (setq msg (number-to-string (string-to-number msg)))
-	  (setq ret (cons (list msg mrk) ret))
-	  (forward-line))
-	(nreverse ret)))))
-
 (defun mew-summary-mark-recover (mdb &optional refdb refs)
   (let ((opos (point))
 	(case-fold-search nil)
-	msg mrk new-ref ref-ent)
+	(msg nil) (mrk nil) new-ref ref-ent)
     (goto-char (point-min))
     (dolist (ent mdb)
       (mew-set '(msg mrk) ent)
@@ -513,13 +493,13 @@ Put the escape mark (default is '$') in COUNT times."
 ;;;
 
 (defun mew-summary-delete (&optional count)
-  "Put the delete mark (default is 'D') in COUNT times."
+  "Put the delete mark (default is `D') in COUNT times."
   (interactive "P")
   (mew-summary-not-in-nntp
    (mew-mark-put-mark-loop 'mew-summary-delete-one count nil)))
 
 (defun mew-summary-delete-one (&optional no-msg)
-  "Put the delete mark (default is 'D') on this message."
+  "Put the delete mark (default is `D') on this message."
   (mew-mark-put-mark mew-mark-delete no-msg 'valid-only))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -528,13 +508,13 @@ Put the escape mark (default is '$') in COUNT times."
 ;;;
 
 (defun mew-summary-unlink (&optional count)
-  "Put the unlink mark (default is 'X') in COUNT times."
+  "Put the unlink mark (default is `X') in COUNT times."
   (interactive "P")
   (mew-summary-not-in-nntp
    (mew-mark-put-mark-loop 'mew-summary-unlink-one count nil)))
 
 (defun mew-summary-unlink-one (&optional no-msg)
-  "Put the unlink mark (default is 'X') on this message."
+  "Put the unlink mark (default is `X') on this message."
   (mew-mark-put-mark mew-mark-unlink no-msg 'valid-only))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -544,12 +524,12 @@ Put the escape mark (default is '$') in COUNT times."
 
 (defun mew-summary-unread (&optional count)
   "\\<mew-summary-mode-map>
-Put the unread mark (default is 'U') in COUNT times."
+Put the unread mark (default is `U') in COUNT times."
   (interactive "P")
   (mew-mark-put-mark-loop 'mew-summary-unread-one count nil))
 
 (defun mew-summary-unread-one (&optional no-msg)
-  "Put the unread mark (default is 'U') on this message."
+  "Put the unread mark (default is `U') on this message."
   (mew-mark-put-mark mew-mark-unread no-msg))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -674,22 +654,22 @@ BEG and END."
   (mew-summary-exchange-mark mew-mark-review mew-mark-unlink 'valid-only))
 
 (defun mew-summary-mark-escape ()	;; * -> $
-  "Change the '*' mark into the '$' mark."
+  "Change the `*' mark into the `$' mark."
   (interactive)
   (mew-summary-exchange-mark mew-mark-review mew-mark-escape))
 
 (defun mew-summary-mark-review ()	;; $ -> *
-  "Change the '$' mark into the '*' mark."
+  "Change the `$' mark into the `*' mark."
   (interactive)
   (mew-summary-exchange-mark mew-mark-escape mew-mark-review))
 
 (defun mew-summary-mark-unread ()	;; * -> U
-  "Change the '*' mark into the 'U' mark."
+  "Change the `*' mark into the `U' mark."
   (interactive)
   (mew-summary-exchange-mark mew-mark-review mew-mark-unread))
 
 (defun mew-summary-mark-swap ()		;; $ <-> *
-  "Swap the '$' mark and the '*' mark."
+  "Swap the `$' mark and the `*' mark."
   (interactive)
   (mew-summary-exchange-mark mew-mark-escape mew-mark-tmp)
   (mew-summary-exchange-mark mew-mark-review mew-mark-escape)
@@ -701,8 +681,8 @@ BEG and END."
 ;;;
 
 (defun mew-summary-mark-duplicated (&optional arg)
-  "Put the mark specified by 'mew-mark-duplicated' on duplicated
-messages. If called with '\\[universal-argument]', process in the
+  "Put the mark specified by `mew-mark-duplicated' on duplicated
+messages. If called with `\\[universal-argument]', process in the
 region."
   (interactive "P")
   (mew-summary-not-in-queue
@@ -863,7 +843,7 @@ the specified mark."
 
 (defun mew-summary-exchange-marks ()
   "Exchange the first input mark to the second one.
-The 'o' mark is not exchangeable."
+The `o' mark is not exchangeable."
   (interactive)
   (let* ((from (mew-summary-input-exchangeable-mark "Input mark from: "))
 	 (to  (mew-summary-input-exchangeable-mark "Input mark to: "))

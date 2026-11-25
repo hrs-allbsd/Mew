@@ -1,10 +1,12 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-local.el
 
 ;; Author:  Mew developing team
 ;; Created: Dec 12, 2001
 
 (eval-when-compile
-  (require 'mew-summary))
+  (require 'mew-summary)
+  (require 'mew-env0))
 
 (defvar mew-local-folder-alist-file ".mew-folder-alist")
 (defvar mew-local-folder-alist nil)
@@ -18,6 +20,11 @@
 ;;; Listing directories
 ;;;
 
+;; Defined in mew-unix.el, mew-darwin.el or mew-win32.el, whichever
+;; mew-init requires.  That happens at run time, so say here that the
+;; name is a variable.
+(defvar mew-dir-list-function)
+
 (defun mew-dir-list (dir)
   (if (file-directory-p (expand-file-name dir))
       (funcall mew-dir-list-function dir)
@@ -29,10 +36,10 @@ Subdirectories are expressed by a list.
 This function uses two techniques for speed up.
 
 One is to gather candidates of directory by matching
-'mew-regex-folder-candidate'. The default is
+`mew-regex-folder-candidate'. The default is
 \"^[^.0-9]\\|^[0-9].*[^0-9]\". So, typical messages whose name is
 numeric are not gathered. This makes it faster to check whether or not
-each candidate is a directory in 'while' loop.
+each candidate is a directory in `while' loop.
 
 The other is to see if the link count of a directory is 2. If so, the
 directory does not have subdirectories. So, it is not necessary to
@@ -56,10 +63,10 @@ Subdirectories are expressed by a list.
 This function uses one technique for speed up.
 
 It is to gather candidates of directory by matching
-'mew-regex-folder-candidate'. The default is
+`mew-regex-folder-candidate'. The default is
 \"^[^.0-9]\\|^[0-9].*[^0-9]\". So, typical messages whose name is
 numeric are not gathered. This makes it faster to check whether or not
-each candidate is a directory in 'while' loop."
+each candidate is a directory in `while' loop."
   (let* ((default-directory (expand-file-name dir default-directory))
 	 (dirent (directory-files "." nil mew-regex-folder-candidate)) ;; MUST sort
 	 dirs ent subdirs)
@@ -171,7 +178,7 @@ each candidate is a directory in 'while' loop."
 ;;;
 
 (defun mew-local-folder-insert (folder)
-  "Insert FOLDER to 'mew-local-folder-alist'.
+  "Insert FOLDER to `mew-local-folder-alist'.
 Binary search is used for speed reasons."
   (let (dir subdir)
     (unless (string-match mew-regex-ignore-folders folder)
@@ -267,7 +274,7 @@ Binary search is used for speed reasons."
      (mew-local-set-directive pnm directive)
      (mew-local-set-bnm pnm bnm)
      (mew-local-set-buf pnm buf)
-     (mew-local-set-case pnm mew-case) ;; xxx specfy to mew-local-retrieve?
+     (mew-local-set-case pnm mew-case) ;; xxx specify to mew-local-retrieve?
      (cond
       ((eq directive 'inc)
        (mew-sinfo-set-unread-mark (mew-get-unread-mark bnm))
@@ -353,6 +360,7 @@ Binary search is used for speed reasons."
 	 (buf (mew-local-get-buf pnm))
 	 (virtualp (mew-folder-virtualp bnm))
 	 (mdb (mew-local-get-mdb pnm))
+	 (case (mew-local-get-case pnm))
 	 (flush (mew-local-get-flush pnm)))
     (save-excursion
       (mew-local-debug "SENTINEL" event)
@@ -382,12 +390,16 @@ Binary search is used for speed reasons."
 	 (message "Scanning %s...done" bnm))
        (run-hooks 'mew-scan-sentinel-hook)
        (when (and mew-auto-flush-queue flush)
-	 (mew-smtp-flush-queue mew-case))
+	 (mew-smtp-flush-queue case))
        (mew-remove-buffer buf)))))
 
 (defun mew-virtual-set-cache-time ()
-  (let* ((ctime (current-time))
-	 (cache-time (list (nth 0 ctime) (nth 1 ctime))))
+  ;; Keep timestamps in (HI LO) form,
+  ;; so that files that current Mew generates
+  ;; can be read by Mew versions predating August 2026.
+  ;; This loses subsecond information.
+  (let* ((ctime (time-convert nil 'integer))
+	 (cache-time (list (ash ctime -16) (logand ctime 65535))))
     (mew-sinfo-set-cache-time cache-time)))
 
 ;;; Code:

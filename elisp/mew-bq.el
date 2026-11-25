@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-bq.el --- Base64 and Quoted-Printable encoding for Mew
 
 ;; Author:  Mew developing team
@@ -39,9 +40,6 @@
 
 (defconst mew-header-decode-regex2
   "[ \t]*=\\?\\([^? \t]+\\)\\?\\(.\\)\\?\\([^? \t]+\\)\\?=")
-
-(defconst mew-header-decode-regex3
-  "^\\([ \t]+\\)=\\?[^? \t]+\\?.\\?[^? \t]+\\?=")
 
 (defconst mew-header-param-regex
   "^\\([^=*]+\\)\\(\\|\\*[0-9]+\\)\\(\\*?\\)=\\(.*\\)$")
@@ -160,7 +158,7 @@
        (t
 	(aset ret j (or prefix ?=))
 	(setq j (1+ j))
-	(aset ret j (aref "0123456789ABCDEF" (lsh char -4)))
+	(aset ret j (aref "0123456789ABCDEF" (ash char -4)))
 	(setq j (1+ j))
 	(aset ret j (aref "0123456789ABCDEF" (logand char 15)))))
       (setq j (1+ j)))
@@ -182,7 +180,7 @@
 	  (aset ret j char)
 	(aset ret j ?:)
 	(setq j (1+ j))
-	(aset ret j (aref "0123456789abcdef" (lsh char -4)))
+	(aset ret j (aref "0123456789abcdef" (ash char -4)))
 	(setq j (1+ j))
 	(aset ret j (aref "0123456789abcdef" (logand char 15))))
       (setq j (1+ j)))
@@ -203,23 +201,22 @@
 (defun mew-q-decode-string (qpstr &optional okey)
   (condition-case nil
       (let* ((len (length qpstr))
-	     (ret (mew-make-string len))
-	     (i 0) (j 0) char key)
+	     (i 0) char key ret)
 	(setq key (or okey ?=))
 	(while (< i len) ;; cannot use non-lexbind dotimes since Emacs 29 does not support it
 	  (setq char (aref qpstr i))
 	  (cond
 	   ((and (not okey) (char-equal char ?_))
-	    (aset ret j mew-sp))
+	    (setq ret (cons mew-sp ret)))
 	   ((char-equal char key)
-	    (aset ret j (+ (* (mew-hexchar-to-int (aref qpstr (1+ i))) 16)
-			   (mew-hexchar-to-int (aref qpstr (+ i 2)))))
+	    (setq ret (cons (+ (* (mew-hexchar-to-int (aref qpstr (1+ i))) 16)
+			       (mew-hexchar-to-int (aref qpstr (+ i 2))))
+			    ret))
 	    (setq i (+ i 2)))
 	   (t
-	    (aset ret j char)))
-	  (setq j (1+ j))
+	    (setq ret (cons char ret))))
 	  (setq i (1+ i)))
-	(substring ret 0 j))
+	(mew-chars-to-string (reverse ret)))
     (error nil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -670,7 +667,7 @@
       (format "Charset (%s) for body is not supported.\n" msg))
      ((eq err 'no-charset)
       (if msg
-	  (format "Charset (%s) for body is mis-matched.\n" msg)
+	  (format "Charset (%s) for body is mismatched.\n" msg)
 	"Charset for body is not specified.\n"))
      ((eq err 'multi)
       (format "Invalid encoding (%s) for multipart.\n" msg)))
@@ -847,7 +844,7 @@ That is, each line may be more than 75."
 	  (aset ret j char)
 	(aset ret j ?%)
 	(setq j (1+ j))
-	(aset ret j (aref "0123456789ABCDEF" (lsh char -4)))
+	(aset ret j (aref "0123456789ABCDEF" (ash char -4)))
 	(setq j (1+ j))
 	(aset ret j (aref "0123456789ABCDEF" (logand char 15))))
       (setq j (1+ j)))
@@ -857,9 +854,13 @@ That is, each line may be more than 75."
   (let* ((value-params (mew-addrstr-parse-value-list whole-value))
 	 (value (car value-params))
 	 (params (cdr value-params))
-	 (max 0) num
-	 ret ext ext-sort entry charset cs
-	 paramname-value paramname paramvalue)
+	 (max 0)
+	 (num nil)
+	 (paramname nil)
+	 (paramvalue nil)
+	 (charset nil)
+	 ret ext ext-sort entry cs
+	 paramname-value)
     (dolist (param params)
       (setq paramname-value (mew-param-analyze param))
       (when paramname-value
@@ -870,7 +871,9 @@ That is, each line may be more than 75."
 	  (setq num (nth 2 paramname-value))
 	  (if (> num max) (setq max num)))))
     (if (null ext)
-	(cons value (nreverse ret)) ;; fast return
+	;; A plain value may have an encoded-word decoded by
+	;; mew-param-analyze-broken, which can carry a control character.
+	(cons value (mapcar 'mew-param-sanity-check (nreverse ret)))
       (setq max (1+ max))
       (dolist (ea ext)
 	(mew-set '(paramname paramvalue num) ea)
@@ -960,23 +963,31 @@ That is, each line may be more than 75."
     (mew-decode-warning-params name 'raw)
     (setq value (mew-cs-decode-string value mew-cs-autoconv)))
   (when (string-match mew-header-decode-regex value)
-    (let (pre med pst)
+    ;; One pass from left to right: rescanning the whole value after
+    ;; each word took time quadratic in the number of words.
+    (let ((start 0) (ret nil) (after-word nil)
+	  beg end cs b-or-q etext gap)
       (mew-decode-warning-params name 'enc)
-      (while (string-match mew-header-decode-regex value)
-	;; We cannot ensure that sub-function does not use match functions.
-	;; So, pre/pst prevents infinite loop.
-	(setq pre (substring value 0 (match-beginning 0)))
-	(setq pst (substring value (match-end 0)))
-	(setq med (mew-header-decode (match-string 1 value)
-				     (match-string 2 value)
-				     (match-string 3 value)))
-	(if (string-match mew-header-decode-regex3 pst)
-	    (setq pst (substring pst (match-end 1))))
-	(setq value (concat pre med pst)))))
+      (while (string-match mew-header-decode-regex value start)
+	(setq beg (match-beginning 0) end (match-end 0))
+	;; mew-header-decode may use match functions.
+	(setq cs (match-string 1 value))
+	(setq b-or-q (match-string 2 value))
+	(setq etext (match-string 3 value))
+	(setq gap (substring value start beg))
+	;; Spaces between encoded words are dropped.
+	(unless (and after-word (string-match "\\`[ \t]+\\'" gap))
+	  (push gap ret))
+	(push (mew-header-decode cs b-or-q etext) ret)
+	(setq start end after-word t))
+      (push (substring value start) ret)
+      (setq value (apply #'concat (nreverse ret)))))
   value)
 
 (defun mew-param-sanity-check (ent)
-  (let (param value new)
+  (let ((param nil)
+	(value nil)
+	new)
     (mew-set '(param value) ent)
     (setq new (mew-header-sanity-check-string value))
     (unless (string= value new) (mew-decode-warning-params param 'ctl))

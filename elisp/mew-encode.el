@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-encode.el --- MIME syntax encoder for Mew
 
 ;; Author:  Mew developing team
@@ -214,7 +215,7 @@
 	    (setq insl nil)
 	    (forward-line))))
       ret)))
-	
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Dcc:, Bcc:
@@ -299,9 +300,15 @@
 ;;;
 
 (defun mew-encode-set-privacy (pnm privacy case)
-  (unless (or (mew-syntax-get-privacy mew-encode-syntax) ;; specified
-	      ;; encryption previously failed, so bypass.
-	      (and (null privacy) (mew-tinfo-get-privacy-err)))
+  (cond
+   ((mew-syntax-get-privacy mew-encode-syntax)) ;; specified
+   ((and (null privacy) (mew-tinfo-get-privacy-err))
+    ;; Protecting failed last time.  Sending again would go out as
+    ;; it is, so say so instead of doing it silently.
+    (let ((err (or (mew-tinfo-get-encode-err) "Protecting this message failed")))
+      (unless (y-or-n-p (format "%s.  Send it without protection? " err))
+	(mew-encode-error err))))
+   (t
     (let (type)
       (cond
        (privacy
@@ -317,7 +324,7 @@
        (mew-pcdb-ct (mew-pcdb-by-service type)))
       ;; recipients are ignored when signing
       (mew-syntax-set-decrypters
-       mew-encode-syntax (mew-smtp-get-recipients pnm)))))
+       mew-encode-syntax (mew-smtp-get-recipients pnm))))))
 
 (defun mew-encode-make-header (&optional addsep resentp)
   (unless (mew-header-existp mew-mv:)
@@ -377,7 +384,7 @@
   (mew-set-buffer-multibyte t)
   (if (buffer-modified-p) (save-buffer)) ;; to make backup
   (widen)
-  (let (multip recipients msgid logtime)
+  (let (multip recipients (msgid nil) (logtime nil))
     (mew-smtp-set-raw-header
      pnm (mew-buffer-substring (point-min) (mew-header-end)))
     (unless headerp
@@ -466,7 +473,7 @@
   (mew-set-buffer-multibyte t)
   (if (buffer-modified-p) (save-buffer)) ;; to make backup
   (widen)
-  (let (multip newsgroups msgid logtime)
+  (let (multip newsgroups (msgid nil) (logtime nil))
     (mew-nntp2-set-raw-header
      pnm (mew-buffer-substring (point-min) (mew-header-end)))
     ;; Let's backup
@@ -487,6 +494,9 @@
     (unless newsgroups (mew-encode-error "No newsgroups!"))
     ;; Header modifications which are not remained.
     (mew-header-delete-lines (list mew-fcc: mew-resent-fcc:)) ;; anyway
+    ;; NNTP cannot deliver blind copies; never post their addresses.
+    (mew-header-delete-lines (list mew-bcc: mew-resent-bcc:
+				   mew-dcc: mew-resent-dcc:))
     (mew-nntp2-set-fcc pnm fcc)
     ;;
     (mew-encode-from case nil)
@@ -558,6 +568,15 @@
 
 (defvar mew-draft-keep-text-charset nil)
 
+(defun mew-encode-mime-body-check (ret beg)
+  "Complain unless the encoder exited with 0.
+RET is what call-process gave back, or nil if it could not be run at
+all.  Whatever the encoder printed sits between BEG and the end of the
+region and would go out as the message, so that is removed first."
+  (unless (eq ret 0)
+    (delete-region beg (point-max))
+    (mew-encode-error (concat mew-prog-mime-encode " failed"))))
+
 (defun mew-encode-mime-body (ctl cte file no-encoding)
   ;; If file is 't', target is buffered.
   ;; text should be buffered
@@ -607,7 +626,7 @@
 	  (if (string= (mew-tinfo-get-flowed) "yes")
 	      (setq delsp t)))
 	 ((mew-tinfo-get-use-flowed)
-	  (setq flowed-delsp (mew-encode-flowed beg (point-max) charset))
+	  (setq flowed-delsp (mew-encode-flowed beg (point-max)))
 	  (mew-set '(flowed delsp) flowed-delsp))))
       (unless (mew-coding-system-p cs)
 	(mew-encode-error
@@ -682,7 +701,7 @@
 	  (setq cte mew-7bit)
 	  (narrow-to-region beg (point-max))
 	  (mew-convert-message))))
-     ((and (mew-case-equal cte mew-b64) (fboundp 'base64-encode-region))
+     ((mew-case-equal cte mew-b64)
       (unless textp
 	(mew-frwlet (if linebasep mew-cs-text-for-read mew-cs-binary) mew-cs-dummy
 	  (mew-insert-file-contents file)))
@@ -702,9 +721,13 @@
 	    ;; NEVER use call-process-region for privacy reasons
 	    (write-region beg (point-max) file nil 'no-msg))
 	  (delete-region beg (point-max)))
-	(mew-piolet mew-cs-text-for-read mew-cs-dummy
-	  (apply 'call-process mew-prog-mime-encode file t nil opt))
-	(if textp (mew-delete-file file))))
+	(let ((ret (condition-case nil
+		       (mew-piolet mew-cs-text-for-read mew-cs-dummy
+			 (apply 'call-process mew-prog-mime-encode file t nil opt))
+		     ;; a program which cannot be run at all
+		     (error nil))))
+	  (if textp (mew-delete-file file))
+	  (mew-encode-mime-body-check ret beg))))
      (t
       (mew-encode-error (concat mew-prog-mime-encode " does not exist"))))
     (list cte charset flowed delsp)))
@@ -722,10 +745,10 @@
     (when (and file (string-match mew-regex-nonascii file))
       (setq name (car (mew-header-encode-string file)))
       ;; name must not be double-quoted here.
-      ;; mew-heaer-insert will do this later
+      ;; mew-header-insert will do this later
       (list "name" name))))
 
-(defun mew-encode-flowed (beg end charset)
+(defun mew-encode-flowed (beg end)
   "Encoding lines with RFC 3676"
   (let (flowed delsp column)
     (save-excursion
@@ -819,7 +842,8 @@
 	 (no-encoding (mew-encode-no-mime-encoding privacy))
 	 (mew-inherit-7bit (mew-encode-limit-7bitp privacy))
 	 (beg (point))
-	 mret charset bodybeg cst ask-cst broken-name flowed delsp)
+	 mret (charset nil) bodybeg cst ask-cst
+	 broken-name (flowed nil) (delsp nil))
     (setq mret (mew-encode-mime-body ctl cte (or buffered file) no-encoding))
     (goto-char beg)
     (mew-set '(cte charset flowed delsp) mret)
@@ -983,7 +1007,7 @@
 (defun mew-encode-security-multipart (beg privacy depth decrypters cte)
   (save-restriction
     (narrow-to-region beg (point-max))
-    (let (proto ct)
+    (let ((proto nil) ct)
       (dolist (ent privacy)
 	(goto-char (point-min))
 	(mew-set '(ct proto) ent)
@@ -997,9 +1021,9 @@
 	  (mew-encode-smime proto cte decrypters)))))))
 
 (defun mew-security-multipart-boundary (depth)
-   (if depth
-       (mew-boundary-get (format "Security_Multipart%s" (number-to-string depth)))
-     (mew-boundary-get "Security_Multipart")))
+  (if depth
+      (mew-boundary-get (format "Security_Multipart%s" (number-to-string depth)))
+    (mew-boundary-get "Security_Multipart")))
 
 (defun mew-save-transfer-form (beg end retain &optional cte)
   ;; called in the narrowed region
@@ -1041,7 +1065,7 @@
   (let* ((boundary (mew-security-multipart-boundary depth))
 	 (switch mew-encode-multipart-encrypted-switch) ;; save length
 	 (func (mew-encode-get-security-func proto switch))
-	 file1 file2 file3 cte2 cte3 fc errmsg)
+	 file1 (file2 nil) (file3 nil) (cte2 nil) (cte3 nil) fc (errmsg nil))
     ;; Write the part converting line breaks.
     (setq file1 (mew-save-transfer-form (point-min) (point-max) nil cte))
     ;; The narrowed region stores nothing
@@ -1088,7 +1112,8 @@
 	 (switch mew-encode-multipart-signed-switch) ;; save length
 	 (func (mew-encode-get-security-func proto switch))
 	 (canon-func (mew-encode-get-canonicalize-func proto switch))
-	 file1 file2 micalg cte2 fmc errmsg ct2 cdp2)
+	 file1 (file2 nil) (micalg nil) (cte2 nil) fmc
+	 (errmsg nil) (ct2 nil) (cdp2 nil))
     (if (fboundp canon-func) (funcall canon-func))
     (setq file1 (mew-save-transfer-form (point-min) (point-max) 'retain))
     ;; The narrowed region still the ORIGINAL part (i.e. line breaks are LF)
@@ -1141,7 +1166,7 @@
     (save-restriction
       (narrow-to-region beg end)
       (cond
-       ((and (mew-case-equal cte mew-b64) (fboundp 'base64-encode-region))
+       ((mew-case-equal cte mew-b64)
 	(when linebasep
 	  (goto-char (point-min))
 	  (mew-lf-to-crlf))
@@ -1157,9 +1182,13 @@
 	    ;; NEVER use call-process-region for privacy reasons
 	    (write-region (point-min) (point-max) file nil 'no-msg)
 	    (delete-region (point-min) (point-max)))
-	  (mew-piolet mew-cs-text-for-read mew-cs-dummy
-	    (apply 'call-process mew-prog-mime-encode file t nil opt))
-	  (mew-delete-file file)))
+	  (let ((ret (condition-case nil
+			 (mew-piolet mew-cs-text-for-read mew-cs-dummy
+			   (apply 'call-process mew-prog-mime-encode file t nil opt))
+		       ;; a program which cannot be run at all
+		       (error nil))))
+	    (mew-delete-file file)
+	    (mew-encode-mime-body-check ret (point-min)))))
        (t
 	(mew-encode-error (concat mew-prog-mime-encode " does not exist")))))))
 
@@ -1258,8 +1287,8 @@
 	      (setq cte mew-b64))
 	  (unless (mew-case-equal cte mew-7bit)
 	    (mew-convert-mime-body
-	     ctbody-beg (point-max) cte (mew-ct-linebasep ct))))
-	 (goto-char (point-min)))
+	     ctbody-beg (point-max) cte (mew-ct-linebasep ct)))))
+	(goto-char (point-min))
 	(mew-header-delete-lines (list mew-cte:))
 	(goto-char cthd-end)
 	(mew-header-insert mew-cte: (concat cte " " mew-field-comment))))))
@@ -1268,10 +1297,13 @@
   (let* ((case-fold-search nil) ;; boundary is case sensitive
 	 (ct (mew-syntax-get-value ctl 'cap))
 	 (dctl (if (string= ct mew-ct-mld) mew-type-msg))
-	 (boundary (regexp-quote (mew-syntax-get-param ctl "boundary")))
-	 obound ebound bregex start break)
-    (unless boundary
+	 (raw-boundary (mew-syntax-get-param ctl "boundary"))
+	 boundary obound ebound bregex start break)
+    ;; The check has to come before regexp-quote, which would signal
+    ;; wrong-type-argument on nil first.
+    (unless raw-boundary
       (mew-encode-error "No boundary parameter for multipart"))
+    (setq boundary (regexp-quote raw-boundary))
     (setq obound (concat "--" boundary))
     (setq ebound (concat "--" boundary "--"))
     (setq bregex (concat "^--" boundary "\\(\\|--\\)$"))
@@ -1320,6 +1352,15 @@
      'nobackup)
     nil)) ;; to save
 
+(defun mew-encode-delete-backup ()
+  "Delete the backup and the info file of this draft.
+They are of no use once the draft is sent or killed, and the backup
+is the draft before encoding: the plain text of an encrypted message."
+  (let ((file (buffer-file-name)))
+    (when file
+      (mew-delete-file (mew-prepend-prefix file mew-backup-prefix))
+      (mew-delete-file (concat file mew-draft-info-suffix)))))
+
 (defun mew-encode-load-syntax ()
   (let* ((file (buffer-file-name))
 	 (info (concat file mew-draft-info-suffix))
@@ -1332,7 +1373,7 @@
 	  (setq mew-encode-syntax nil))
       (mew-tinfo-set-case (cdr (assoc "Case:" syntax)))
       (mew-tinfo-set-flowed (cdr (assoc "Flowed:" syntax)))
-      (mew-tinfo-set-flowed (cdr (assoc "Use-Flowed:" syntax)))
+      (mew-tinfo-set-use-flowed (cdr (assoc "Use-Flowed:" syntax)))
       (mew-tinfo-set-hdr-file (cdr (assoc "Message:" syntax))) ;; Header mode
       t)))
 

@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-highlight.el --- Highlight for Mew
 
 ;; Author:  Mew developing team
@@ -6,6 +7,10 @@
 ;;; Code:
 
 (require 'mew)
+
+(eval-when-compile
+  (if (mew-which-el "face-remap")
+      (require 'face-remap)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -73,11 +78,6 @@
 
 (defun mew-unhighlight-region (BEG END)
   (mew-overlay-delete-region BEG END))
-
-(defun mew-unhighlight-header ()
-  (save-restriction
-    (widen)
-    (mew-unhighlight-region (point-min) (mew-header-end))))
 
 (defun mew-highlight-header-region (BEG END)
   "A function to highlight header in Message and Draft mode."
@@ -153,12 +153,8 @@
 (defun mew-highlight-body-region (BEG END &optional draft rehighlight)
   (when (and (or mew-use-highlight-body mew-use-highlight-url)
 	     (or (= 0 mew-highlight-body-max-size)
-		 (<= BEG mew-highlight-body-max-size)))
-    (unless (or (= 0 mew-highlight-body-max-size)
-		(<= END mew-highlight-body-max-size))
-      (setq END mew-highlight-body-max-size))
-    (let* ((inhibit-point-motion-hooks t)
-	   (cite-regex mew-highlight-body-regex-cite)
+		 (<= (- END BEG) mew-highlight-body-max-size)))
+    (let* ((cite-regex mew-highlight-body-regex-cite)
 	   (cmt-regex mew-highlight-body-regex-comment)
 	   (url-regex mew-regex-url)
 	   (fancy-num 0)
@@ -270,6 +266,82 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
+;;; BIMI
+;;;
+
+(defun mew-highlight-bimi (beg end)
+  "Display BIMI logo."
+  (if (and mew-use-highlight-bimi
+	   window-system
+	   (fboundp mew-highlight-bimi-function))
+      (funcall mew-highlight-bimi-function beg end)))
+
+(defvar mew-highlight-bimi-function (if mew-icon-p 'mew-highlight-bimi-original)
+  "*A function to display BIMI logo.")
+
+(defun mew-bimi-topmost-ar ()
+  "Return the value of the topmost Authentication-Results:.
+In a decoded header, it is the one marked by `mew-decode-rfc822-header'."
+  (save-excursion
+    (mew-header-goto-end)
+    (let ((pos (text-property-any (point-min) (point) 'mew-topmost-ar t))
+	  beg)
+      (if (null pos)
+	  (car (mew-header-get-value "Authentication-Results:" t))
+	(goto-char pos)
+	(when (looking-at "Authentication-Results:[ \t]*")
+	  (setq beg (match-end 0))
+	  (forward-line)
+	  (mew-header-goto-next)
+	  (mew-buffer-substring beg (1- (point))))))))
+
+(defun mew-bimi-pass-p ()
+  "Return non-nil if the topmost Authentication-Results: says bimi=pass.
+Only the topmost one is added by your own server; the sender can put
+others below it.  See also `mew-bimi-authserv-id-list'."
+  (let* ((ar (mew-bimi-topmost-ar))
+	 (id (and ar (car (split-string ar "[ \t\n;]+" t))))
+	 (case-fold-search t))
+    (and ar
+	 (or (null mew-bimi-authserv-id-list)
+	     (member-ignore-case id mew-bimi-authserv-id-list))
+	 (string-match "\\bbimi=pass\\b" ar))))
+
+(defun mew-highlight-bimi-original (beg end)
+  (save-excursion
+    (goto-char beg)
+    (mew-elet
+     (let ((regex1 "^BIMI-Indicator: *\\(.*\\)\n")
+           (wmsg "No 'bimi=pass' in Authentication-Results: regarding BIMI-Indicator:")
+	   overlay bimi-logo bimi-pass svgb64 scale)
+       (setq bimi-pass (mew-bimi-pass-p))
+       (when (re-search-forward regex1 end t)
+	 (setq svgb64 (match-string-no-properties 1))
+	 (cond
+	  ((and mew-use-bimi-status-check (not bimi-pass))
+	   (goto-char end)
+	   (insert mew-x-mew:)
+	   (setq overlay (mew-overlay-make (- (point) (length mew-x-mew:)) (point)))
+	   (overlay-put overlay 'face 'mew-face-header-important)
+           (insert " " wmsg)
+           (setq overlay (mew-overlay-make (- (point) (length wmsg)) (point)))
+           (overlay-put overlay 'face 'mew-face-header-xmew)
+           (insert "\n"))
+	  (t
+	   (when (image-type-available-p 'svg)
+	     (if (boundp 'text-scale-mode)
+		 (setq scale (expt text-scale-mode-step text-scale-mode-amount))
+	       (setq scale 1.0))
+	     (setq bimi-logo (create-image (mew-base64-decode-string svgb64) 'svg t
+					   :foreground "black"
+					   :width (round (* mew-bimi-logo-size scale)) :ascent 'center)))
+	   (when bimi-logo
+	     (save-restriction
+	       (narrow-to-region beg end)
+	       (mew-bimi-display bimi-logo))))))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
 ;;; Cooking
 ;;;
 
@@ -284,8 +356,7 @@
 ;; See also mew-scan-insert-line
 (defun mew-summary-cook-region (beg end &optional interrupt)
   (when (and (mew-summary-or-virtual-p) mew-summary-buffer-raw)
-    (let ((inhibit-point-motion-hooks t)
-	  ret mark face start med)
+    (let (ret mark face start med)
       (catch 'loop
 	(save-excursion
 	  (mew-elet

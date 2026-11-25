@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-message.el --- Message mode for Mew
 
 ;; Author:  Mew developing team
@@ -35,7 +36,7 @@
   (setq page-delimiter mew-page-delimiter)
   (mew-message-setup-decoration)
   (mew-message-toolbar-update)
-  (mew-run-mode-hooks 'mew-message-mode-hook))
+  (run-mode-hooks 'mew-message-mode-hook))
 
 (defun mew-message-mode-line (fld message)
   (let* ((msg (or message
@@ -46,7 +47,7 @@
       (setq mode-line-process (format " %s %s/%s" flag fld msg)))))
 
 (defun mew-message-next-page (&optional lines)
-  "Scroll up this message. Return 'nil' if more pages. Otherwise, return 't'."
+  "Scroll up this message. Return `nil' if more pages. Otherwise, return `t'."
   (interactive)
   (if (save-excursion
 	(goto-char (window-end))
@@ -76,8 +77,8 @@
     nil))
 
 (defun mew-message-prev-page (&optional lines)
-  "Back-scroll this message. Return 'nil' if more pages.
-Otherwise, return 't'."
+  "Back-scroll this message. Return `nil' if more pages.
+Otherwise, return `t'."
   (interactive)
   (move-to-window-line 0)
   (if (save-excursion
@@ -195,8 +196,8 @@ confused. Please use '\\[mew-message-forward]' instead."
 (defun mew-message-goto-next-url (&optional arg)
   (interactive "P")
   (let ((next (if arg
-                   'previous-single-property-change
-                 'next-single-property-change))
+                  'previous-single-property-change
+                'next-single-property-change))
         pos)
     (setq pos (funcall next (point) 'mew-url))
     (if pos
@@ -280,7 +281,7 @@ confused. Please use '\\[mew-message-forward]' instead."
 	    width start fill-prefix)
 	(while (not (eobp))
 	  (setq start (point))
-	  (setq fill-prefix (mew-fill-match-adaptive-prefix))
+	  (setq fill-prefix (fill-match-adaptive-prefix))
 	  (end-of-line)
 	  (setq width (current-column))
 	  (forward-line)

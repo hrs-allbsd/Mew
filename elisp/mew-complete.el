@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-complete.el --- Completion magic for Mew
 
 ;; Author:  Mew developing team
@@ -98,6 +99,7 @@
 		  'mew-complete-insert-folder-function))
       (display-completion-list all))))
 
+;; Not used in Mew; kept for M-x.
 (defun mew-complete-backscroll ()
   "Backscroll the *Completion* buffer."
   (interactive)
@@ -218,11 +220,11 @@ is inserted before the cursor, the short name is expanded to its address."
   (interactive)
   (mew-complete-proto-folder word
     (if (null word)
-       (mew-complete-window-show (list "+"))
-     (if (and (mew-folder-absolutep word)
-	      (not (mew-draft-or-header-p)))
-	 (mew-complete word (mew-complete-directory-alist word) "directory" nil)
-       (mew-complete word (mew-local-folder-alist) "folder" nil)))))
+	(mew-complete-window-show (list "+"))
+      (if (and (mew-folder-absolutep word)
+	       (not (mew-draft-or-header-p)))
+	  (mew-complete word (mew-complete-directory-alist word) "directory" nil)
+	(mew-complete word (mew-local-folder-alist) "folder" nil)))))
 
 ;; case is specified by mew-inherit-case.
 (defun mew-complete-imap-folder ()
@@ -418,7 +420,7 @@ the cursor is inserted."
 
 (defun mew-circular-complete-switch ()
   "A switch function to call a function defined to
-'mew-circular-complete-function'."
+`mew-circular-complete-function'."
   (interactive)
   (if mew-circular-complete-function (funcall mew-circular-complete-function)))
 
@@ -478,7 +480,7 @@ the cursor is inserted."
 
 (defun mew-expand-address ()
   "Address expansion function for To:, Cc:, etc.
-'user@domain' will be expands 'name <user@domain>' if
+`user@domain' will be expands `name <user@domain>' if
 the name exists."
   (interactive)
   (let ((word (mew-delete-backward-char)) func name)
@@ -598,7 +600,7 @@ the name exists."
 	(insert WORD)) ;; use car
       (mew-complete-window-delete))
      ;; EXPAND
-     ((and (mew-characterp EXPAND-CHAR)
+     ((and (characterp EXPAND-CHAR)
 	   (char-equal (aref WORD (1- len)) EXPAND-CHAR)
 	   (setq subkey (substring WORD 0 (1- len)))
 	   (funcall fhit subkey ALIST))
@@ -615,7 +617,7 @@ the name exists."
      ((stringp cmp) ;; (length all) > 1
       (insert cmp)
       (mew-complete-window-show all)
-      (if (and (mew-characterp EXPAND-CHAR) (funcall fhit cmp ALIST))
+      (if (and (characterp EXPAND-CHAR) (funcall fhit cmp ALIST))
 	  (message
 	   "To expand '%s', type '%c' then '%s'"
 	   cmp EXPAND-CHAR
@@ -695,12 +697,12 @@ the name exists."
         (forward-char -1))
       (if (and here (not (re-search-forward (regexp-quote here) end t)))
           nil ;; "here" does not exist.
-          (setq start (point))
-          (if (= start end)
-              (if here t nil) ;; just after "here",  just after separator
-            (prog1
-                (mew-buffer-substring start end)
-              (delete-region start end)))))))
+        (setq start (point))
+        (if (= start end)
+            (if here t nil) ;; just after "here",  just after separator
+          (prog1
+              (mew-buffer-substring start end)
+            (delete-region start end)))))))
 
 (defun mew-delete-file-name ()
   (if (search-backward mew-path-separator nil t)

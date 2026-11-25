@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-virtual.el --- Virtual mode for Mew
 
 ;; Author:  Mew developing team
@@ -49,7 +50,7 @@
   (mew-summary-setup-mode-line)
   (mew-summary-setup-decoration)
   (mew-highlight-cursor-line)
-  (mew-run-mode-hooks 'mew-virtual-mode-hook))
+  (run-mode-hooks 'mew-virtual-mode-hook))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -58,8 +59,8 @@
 
 (defun mew-summary-selection-by-pick (&optional regionp)
   "Making selection according to a specified pick pattern.
-'mewl' or 'grep' is called as a picking command. If called with
-'\\[universal-argument]', the target is the region."
+`mewl' or `grep' is called as a picking command. If called with
+`\\[universal-argument]', the target is the region."
   (interactive "P")
   (mew-pickable
    (mew-summary-with-mewl
@@ -104,8 +105,10 @@
 	      (mew-summary-selection-by-pick-with-mewl pattern pfolder msgs rfolder lra))))))))))
 
 (defun mew-summary-selection-by-pick-with-mewl (pattern _folder src-msgs rfolder lra)
-  "Create selection with 'mewl'"
-  (let ((opts (list "-a" "-p" pattern "-b" mew-mail-path))
+  "Create selection with `mewl'"
+  (let ((opts (append (list "-a")
+		      (mew-mewl-pattern-args pattern)
+		      (list "-b" mew-mail-path)))
 	(range (mew-summary-pick-range src-msgs)))
     (setq rfolder (mew-scan-mewl-folder rfolder))
     (if range
@@ -114,10 +117,12 @@
     (mew-local-retrieve 'vir opts nil lra)))
 
 (defun mew-summary-selection-by-pick-with-grep (prog opts pattern _folder msgs rfolder lra)
-  "Create selection with 'grep'"
+  "Create selection with `grep'"
   (interactive)
   (let ((file-rttl (mew-summary-selection-by-pick-with-grep1 prog opts pattern rfolder msgs))
-	file rttl func args)
+	(file nil)
+	(rttl nil)
+	func args)
     (mew-set '(file rttl) file-rttl)
     (setq func `(lambda () (mew-delete-file ,file)))
     (setq args (list "-i" file))
@@ -164,8 +169,8 @@
 ;;;
 
 (defun mew-summary-selection-by-mark (&optional ask-mark)
-  "Making selection for messages marked with '*'.
-If called with '\\[universal-argument]', you can specify a target mark."
+  "Making selection for messages marked with `*'.
+If called with `\\[universal-argument]', you can specify a target mark."
   (interactive "P")
   (if (not (mew-pickable))
       (message "This command cannot be used in this folder")

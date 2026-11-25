@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-darwin.el --- Settings for Mew on Darwin
 
 ;; Author:  Mew developing team
@@ -73,7 +74,6 @@
 ;;; Image
 ;;;
 
-(defvar mew-prog-image/*         'mew-mime-image/*)
 (defvar mew-prog-image/*-ext     mew-darwin-exec)
 
 

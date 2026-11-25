@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-imap.el for reading
 
 ;; Author:  Mew developing team
@@ -6,6 +7,8 @@
 ;;; Code:
 
 (require 'mew)
+
+(declare-function string-replace "subr")
 
 (defvar mew-imap-msgid-file ".mew-msgid")
 (defvar mew-imap-folder-alist-file ".mew-folder-alist")
@@ -30,7 +33,7 @@
 ;;;
 
 (defvar mew-imap-info-list
-  '("server" "port" "process" "ssh-process" "ssl-process" "ssl-p" "status"
+  '("server" "port" "process" "ssh-process" "ssl-process" "secure" "status"
     "directive" "bnm" "mdb"
     "rmvs" "kils" "refs" "movs"
     "rtrs" "dels" "uidl" "range"
@@ -44,7 +47,7 @@
     "spam" "spam-field" "spam-word" "spam-pattern"
     "new-mailbox" "my-prefix" "specials" "bytes"
     "gm-ext-1" "gm-thrid" "gm-msgid" "gm-labels"
-    "virtual-info" "disp-info" "status-buf" "mark-hist"))
+    "virtual-info" "disp-info" "status-buf" "mark-hist" "sasl-ir" "xoauth2"))
 
 (mew-info-defun "mew-imap-" mew-imap-info-list)
 
@@ -56,13 +59,14 @@
 (defvar mew-imap-fsm
   '(("greeting"      ("OK" . "capability"))
     ("capability"    ("OK" . "post-capability"))
+    ("xoauth2"       ("OK" . "token-xoauth2") ("NO\\|BAD" . "xoauth2-wpwd"))
     ("auth-xoauth2"  ("OK" .  "next") ("NO" . "xoauth2-wpwd"))
     ("auth-cram-md5" ("OK" . "pwd-cram-md5") ("NO" . "wpwd"))
     ("pwd-cram-md5"  ("OK" . "next") ("NO" . "wpwd"))
     ("auth-login"    ("OK" . "user-login") ("NO" . "wpwd"))
     ("user-login"    ("OK" . "pwd-login") ("NO" . "wpwd"))
     ("pwd-login"     ("OK" . "next") ("NO" . "wpwd"))
-    ("login"         ("OK" . "next") ("NO" . "wpwd"))
+    ("login"         ("OK" . "next") ("NO\\|BAD" . "wpwd"))
     ("select"        ("OK" . "post-select"))
     ("flags"         ("OK" . "flags")) ;; xxx NG but loop
     ("uid"           ("OK" . "umsg"))
@@ -105,7 +109,7 @@
 ;;;
 
 (defun mew-imap-secure-p (pnm)
-  (or (mew-imap-get-ssh-process pnm) (mew-imap-get-ssl-p pnm)))
+  (mew-imap-get-secure pnm))
 
 (defun mew-imap-command-capability (pro pnm)
   (mew-net-status (mew-imap-get-status-buf pnm)
@@ -125,6 +129,8 @@
       (while (re-search-forward "AUTH=\\([^ \r\n]+\\)" nil t)
 	(setq authl (cons (mew-match-string 1) authl)))
       (goto-char (point-min))
+      (mew-imap-set-sasl-ir pnm (and (re-search-forward "\\bSASL-IR\\b" nil t) t))
+      (goto-char (point-min))
       (mew-imap-set-authl pnm authl)
       (mew-imap-set-status pnm "authentication")
       (mew-imap-command-authentication pro pnm))))
@@ -134,20 +140,32 @@
    ((eq (mew-imap-get-auth pnm) t) ;; t means SASL
     (let* ((auth-list (mew-imap-get-auth-list pnm))
 	   (authl (mew-imap-get-authl pnm))
+	   (secure (mew-imap-get-secure pnm))
+	   (case (mew-imap-get-case pnm))
 	   auth func)
       (if (and authl
 	       (setq auth (mew-auth-select2 authl auth-list))
 	       (setq func (mew-imap-auth-get-func auth))
 	       (fboundp func))
-	  (progn
+	  (if (mew-auth-cleartext-refused-p auth secure case)
+	      (mew-imap-command-cleartext-refused pro pnm auth)
 	    (mew-imap-set-auth pnm auth)
 	    (funcall func pro pnm))
 	(mew-imap-debug "<AUTH>" "No preferred IMAP AUTH.\n")
-	(mew-imap-set-status pnm "login")
-	(mew-imap-command-login pro pnm))))
+	;; Not chosen by the user: an attacker may have hidden AUTH=.
+	(if (mew-auth-cleartext-refused-p "LOGIN" secure case)
+	    (mew-imap-command-cleartext-refused pro pnm "LOGIN")
+	  (mew-imap-set-status pnm "login")
+	  (mew-imap-command-login pro pnm)))))
    (t
     (mew-imap-set-status pnm "login")
     (mew-imap-command-login pro pnm))))
+
+(defun mew-imap-command-cleartext-refused (pro pnm auth)
+  (mew-imap-set-error
+   pnm (mew-auth-cleartext-refuse "IMAP" auth (mew-imap-get-case pnm)))
+  (mew-imap-set-status pnm "logout2")
+  (mew-imap-command-logout2 pro pnm))
 
 (defun mew-imap-command-login (pro pnm)
   (let* ((user (mew-imap-get-user pnm))
@@ -309,7 +327,7 @@
 	(setq siz (mew-match-string 1)))
       (when (looking-at ".*FLAGS (\\([^)]*\\)") ;; MUST be a list of flags
 	(setq flags (mew-match-string 1))
-	(if (string-match "Flagged" flags) ;; \\\\ is urgly
+	(if (string-match "Flagged" flags) ;; \\\\ is ugly
 	    (setq mdb (cons (list uid mew-mark-review) mdb))
 	  (if (string-match "Seen" flags)
 	      (setq mdb (cons (list uid mew-mark-read) mdb)))))
@@ -666,7 +684,7 @@
        pro pnm
        (if (mew-imap-get-gm-ext-1 pnm)
            "UID FETCH %s (X-GM-MSGID X-GM-THRID X-GM-LABELS BODY.PEEK[HEADER])"
-           "UID FETCH %s BODY.PEEK[HEADER]")
+         "UID FETCH %s BODY.PEEK[HEADER]")
        uid)))))
 
 (defun mew-imap-command-post-fetch (pro pnm)
@@ -752,6 +770,13 @@
       (mew-imap-set-bytes pnm nil)
       (mew-imap-command-fetch pro pnm))))
 
+(defun mew-imap-command-skip-fetch (pro pnm)
+  ;; The message was expunged by another client, for instance.
+  (mew-imap-set-rtrs pnm (cdr (mew-imap-get-rtrs pnm)))
+  (mew-imap-set-status pnm "fetch")
+  (mew-imap-set-bytes pnm nil)
+  (mew-imap-command-fetch pro pnm))
+
 (defun mew-imap-command-expunge (pro pnm)
   (mew-imap-process-send-string pro pnm "EXPUNGE"))
 
@@ -777,7 +802,8 @@
 	   (case (mew-imap-get-case pnm))
 	   (prefix-list (mew-imap-prefix-list case))
 	   (my-prefix "")
-	   user-prefix sexp sep sharp namespace ent my sp specials)
+	   (my nil) (sp nil)
+	   user-prefix sexp sep sharp namespace ent specials)
       (goto-char (point-max))
       (forward-line -1)
       (save-restriction
@@ -829,7 +855,7 @@
 	 (queue (mew-imap-queue-folder case))
 	 (namespace (mew-imap-get-namespace pnm))
 	 (specials (mew-imap-get-specials pnm))
-	 ret mailboxes friends)
+	 ret mailboxes (friends nil))
     (unless namespace
       (setq namespace (mew-imap-namespace-create nil "" "" nil)) ;; xxx separator?
       (mew-imap-set-namespace pnm namespace))
@@ -1014,34 +1040,27 @@
 
 (defun mew-imap-command-auth-xoauth2 (pro pnm)
   (let* ((user (mew-imap-get-user pnm))
-         (token (mew-auth-oauth2-token-access-token))
-         (auth-string (mew-auth-xoauth2-auth-string user token)))
-    ;; XXX: need to reset satus if token is nil.
-    (mew-imap-process-send-string pro pnm (format "AUTHENTICATE XOAUTH2 %s" auth-string))
-    (mew-imap-set-status pnm "auth-xoauth2")))
+	 (tag (mew-imap-passtag pnm))
+         (auth-string (mew-xoauth2-auth-string user tag (mew-imap-get-case pnm))))
+    (if (mew-imap-get-sasl-ir pnm)
+	(progn
+	  (mew-imap-process-send-string pro pnm (format "AUTHENTICATE XOAUTH2 %s" auth-string))
+	  (mew-imap-set-status pnm "auth-xoauth2"))
+      ;; Without SASL-IR (RFC 4959), the token waits for a continuation.
+      ;; It is obtained first so that the server does not wait for the browser.
+      (mew-imap-set-xoauth2 pnm auth-string)
+      (mew-imap-process-send-string pro pnm "AUTHENTICATE XOAUTH2")
+      (mew-imap-set-status pnm "xoauth2"))))
 
-;; XXX: defalias does not work!
-;; (defalias 'mew-imap2-command-auth-xoauth2 'mew-imap-command-auth-xoauth2)
-(defun mew-imap2-command-auth-xoauth2 (pro pnm)
-  (let* ((user (mew-imap2-get-user pnm))
-         (token (mew-auth-oauth2-token-access-token))
-         (auth-string (mew-auth-xoauth2-auth-string user token)))
-    ;; XXX: need to reset satus if token is nil.
-    (mew-imap2-process-send-string pro pnm (format "AUTHENTICATE XOAUTH2 %s" auth-string))
-    (mew-imap2-set-status pnm "auth-xoauth2")))
+(defun mew-imap-command-token-xoauth2 (pro pnm)
+  (let ((auth-string (mew-imap-get-xoauth2 pnm)))
+    (mew-imap-set-xoauth2 pnm nil)
+    (mew-imap-process-send-string2 pro auth-string)
+    (mew-imap-set-status pnm "auth-xoauth2")))
 
 (defun mew-imap-command-xoauth2-wpwd (pro pnm)
   (mew-imap-set-done pnm t)
-  (mew-passwd-set-passwd (mew-imap-passtag pnm) nil)
-  (delete-process pro)
-  ;; XXX: Should be cared more! Clear process and filter without sending LOGOUT.
-  (error "IMAP XOAUTH2 token is wrong!"))
-
-;; XXX: defalias does not work!
-;; (defalias 'mew-imap2-command-xoauth2-wpwd 'mew-imap-command-xoauth2-wpwd)
-(defun mew-imap2-command-xoauth2-wpwd (pro pnm)
-  (mew-imap2-set-done pnm t)
-  (mew-passwd-set-passwd (mew-imap2-passtag pnm) nil)
+  (mew-passwd-forget-passwd (mew-imap-passtag pnm))
   (delete-process pro)
   ;; XXX: Should be cared more! Clear process and filter without sending LOGOUT.
   (error "IMAP XOAUTH2 token is wrong!"))
@@ -1071,7 +1090,7 @@
 (defun mew-imap-process-send-string (pro pnm &rest args)
   (let ((str (apply 'format args))
 	(tag (mew-imap-tag)))
-    (mew-imap-debug "=SEND=" (concat tag " " str))
+    (mew-imap-debug "=SEND=" (concat tag " " (mew-debug-redact str)))
     (mew-imap-set-tag pnm tag)
     (if (and (processp pro) (eq (process-status pro) 'open))
 	(process-send-string pro (concat tag " " str mew-cs-eol))
@@ -1129,7 +1148,7 @@
 	 (namespace (assoc mew-imap-inbox-folder alist)))
     (if (= (length namespace) mew-imap-namespace-length)
 	namespace
-      (error (mew-substitute-for-summary "Type '\\[universal-argument]\\[mew-status-update]' to collect IMAP folders!")))))
+      (error "%s" (mew-substitute-for-summary "Type '\\[universal-argument]\\[mew-status-update]' to collect IMAP folders!")))))
 
 (defun mew-imap-namespace-sep (namespace)
   (nth 1 namespace))
@@ -1157,7 +1176,7 @@
     (if (char-equal sep-char (aref dir len))
 	(substring dir 0 len)
       dir)))
-	
+
 (defun mew-imap-file-name-as-directory (dir case)
   ;; inbox.foo => inbox.foo.
   (let* ((sep (mew-imap-separator case))
@@ -1265,27 +1284,26 @@
 
 (defun mew-imap-open (pnm case server port no-msg starttlsp)
   (let ((sprt (mew-*-to-port port))
-	(sslnp (mew-ssl-native-p (mew-imap-ssl case)))
+	(gnutlsp (mew-gnutls-p (mew-imap-ssl case)))
+	(pro-plist (list nil))
 	pro tm)
     (condition-case emsg
 	(progn
 	  (setq tm (run-at-time mew-imap-timeout-time nil 'mew-imap-timeout))
 	  (or no-msg (message "Connecting to the IMAP server..."))
-	  (setq pro (mew-open-network-stream pnm nil server sprt
-					     'imap sslnp starttlsp case))
-	  (setq pro (car pro))
+	  (setq pro-plist (mew-open-network-stream pnm nil server sprt
+						   'imap gnutlsp starttlsp case))
+	  (setq pro (car pro-plist))
 	  (when (not (processp pro)) (signal 'quit nil))
 	  (mew-process-silent-exit pro)
 	  (mew-set-process-cs pro mew-cs-binary mew-cs-text-for-net)
 	  (or no-msg (message "Connecting to the IMAP server...done")))
       (quit
-       (or no-msg (message "Cannot connect to the IMAP server"))
-       (setq pro nil))
+       (or no-msg (message "Cannot connect to the IMAP server")))
       (error
-       (or no-msg (message "%s, %s" (nth 1 emsg) (nth 2 emsg)))
-       (setq pro nil)))
+       (or no-msg (message "%s, %s" (nth 1 emsg) (nth 2 emsg)))))
     (if tm (cancel-timer tm))
-    pro))
+    pro-plist))
 
 (defun mew-imap-timeout ()
   ;; Do not timeout if the NSM query pane is active.
@@ -1319,13 +1337,13 @@
          (user (mew-imap-user case))
 	 (port (mew-*-to-string (mew-imap-port case)))
 	 (sshsrv (mew-imap-ssh-server case))
-	 (sslp (mew-imap-ssl case))
+	 (stunnelp (mew-stunnel-p (mew-imap-ssl case)))
 	 (sslport (mew-imap-ssl-port case))
-	 (sslnp (mew-ssl-native-p (mew-imap-ssl case)))
+	 (gnutlsp (mew-gnutls-p (mew-imap-ssl case)))
 	 (starttlsp
-	  (mew-ssl-starttls-p (mew-imap-ssl case)
-			      (mew-*-to-string (mew-imap-port case))
-			      (mew-imap-ssl-port case)))
+	  (mew-starttls-p (mew-imap-ssl case)
+			  (mew-*-to-string (mew-imap-port case))
+			  (mew-imap-ssl-port case)))
 	 (proxysrv (mew-imap-proxy-server case))
 	 (proxyport (mew-imap-proxy-port case))
 	 ;; dirty but necessary for migration
@@ -1335,37 +1353,39 @@
 	 (pnm (mew-imap-info-name case mailbox))
 	 (buf (get-buffer-create (mew-imap-buffer-name pnm)))
 	 (no-msg (eq directive 'biff))
-	 process sshname sshpro sslname sslpro lport info jobs tls
-	 virtual-info disp-info virtual)
+	 process sshname sshpro sslname sslpro lport info jobs protocol pro-plist
+	 virtual-info disp-info virtual secure)
     (if (mew-imap-get-process pnm)
 	(message "Another IMAP process is running. Try later")
       (cond
-       (sslnp
+       (gnutlsp
 	(let ((serv (if starttlsp port sslport)))
-	  (setq process (mew-imap-open pnm case server serv no-msg starttlsp))))
+	  (setq pro-plist (mew-imap-open pnm case server serv no-msg starttlsp))))
        (sshsrv
 	(setq sshpro (mew-open-ssh-stream case server port sshsrv))
 	(when sshpro
 	  (setq sshname (process-name sshpro))
 	  (setq lport (mew-ssh-pnm-to-lport sshname))
 	  (when lport
-	    (setq process (mew-imap-open pnm case "localhost" lport no-msg nil)))))
-       (sslp
-	(when starttlsp (setq tls mew-tls-imap))
-	(setq sslpro (mew-open-ssl-stream case server sslport tls))
+	    (setq pro-plist (mew-imap-open pnm case "localhost" lport no-msg nil)))))
+       (stunnelp
+	(when starttlsp (setq protocol mew-stunnel-protocol-imap))
+	(setq sslpro (mew-open-stunnel-stream case server sslport protocol))
 	(when sslpro
 	  (setq sslname (process-name sslpro))
 	  (setq lport (mew-ssl-pnm-to-lport sslname))
 	  (when lport
-	    (setq process (mew-imap-open pnm case mew-ssl-localhost lport no-msg nil)))))
+	    (setq pro-plist (mew-imap-open pnm case mew-stunnel-localhost lport no-msg nil)))))
        (proxysrv
-	(setq process (mew-imap-open pnm case proxysrv proxyport no-msg nil)))
+	(setq pro-plist (mew-imap-open pnm case proxysrv proxyport no-msg nil)))
        (t
-	(setq process (mew-imap-open pnm case server port no-msg nil))))
+	(setq pro-plist (mew-imap-open pnm case server port no-msg nil))))
+      (setq process (car pro-plist))
       (if (null process)
 	  (when (eq directive 'exec)
 	    (mew-imap-exec-recover bnm))
-	(mew-summary-lock process "IMAPing" (or sshpro sslp))
+	(setq secure (or sshpro stunnelp gnutlsp))
+	(mew-summary-lock process "IMAPing" secure)
 	(mew-sinfo-set-summary-form (mew-get-summary-form bnm))
 	(mew-sinfo-set-summary-column (mew-get-summary-column bnm))
 	(mew-sinfo-set-unread-mark nil)
@@ -1377,7 +1397,7 @@
 	(mew-imap-set-process pnm process)
 	(mew-imap-set-ssh-process pnm sshpro)
 	(mew-imap-set-ssl-process pnm sslpro)
-	(mew-imap-set-ssl-p pnm sslp)
+	(mew-imap-set-secure pnm secure)
 	(mew-imap-set-server pnm server)
 	(mew-imap-set-port pnm port)
 	(mew-imap-set-user pnm user)
@@ -1417,16 +1437,15 @@
 	  (when virtual
 	    (mew-imap-set-status-buf pnm virtual)
 	    (with-current-buffer virtual
-	      (mew-summary-lock process "IMAPing" (or sshpro sslp)))))
+	      (mew-summary-lock process "IMAPing" (or sshpro stunnelp gnutlsp)))))
 	 ((eq directive 'scan)
 	  (mew-imap-set-range pnm (nth 0 args))
 	  (mew-imap-set-get-body pnm (nth 1 args))
 	  (mew-sinfo-set-unread-mark (mew-get-unread-mark bnm))
 	  (if (mew-imap-get-range pnm)
 	      (progn
-;;		(mew-imap-set-mdb pnm (mew-summary-mark-collect4))
+		;;		(mew-imap-set-mdb pnm (mew-summary-mark-collect4))
 		(mew-net-folder-clean))
-;;	    (mew-imap-set-mdb pnm (mew-summary-mark-collect5))
 	    (mew-net-invalid-cache-invisible))
 	  (when (and (string= mailbox mew-imap-inbox-string)
 		     (or (mew-imap-spam-pattern case)
@@ -1461,13 +1480,9 @@
 	(set-process-filter process 'mew-imap-filter)
 	(set-process-buffer process buf)
 	;;
-	(when sslnp
-	  ;; GnuTLS requires a client-initiated command after the
-	  ;; session is established or upgraded to use TLS because
-	  ;; no additional greeting from the server.
-	  (mew-imap-set-status pnm "capability")
-	  (mew-imap-command-capability process pnm))
-	))))
+	(when gnutlsp
+	  (let ((greeting (plist-get (cdr pro-plist) :greeting)))
+	    (if (stringp greeting) (mew-imap-filter process greeting))))))))
 
 (defun mew-imap-exec-recover (bnm)
   (mew-summary-visible-buffer bnm)
@@ -1526,16 +1541,28 @@
 	 (goto-char (point-min))
 	 (while (and (looking-at "^\\*") (= (forward-line) 0))
 	   (delete-region (point-min) (point))))
-       (if (or (null bytes) (< (point-max) bytes)
-	       (save-excursion (goto-char (point-max)) (not (bolp))))
-	   (setq stay t)
+       (cond
+	((and (null bytes)
+	      (save-excursion
+		(goto-char (point-max))
+		(and (bolp) (= (forward-line -1) 0) (looking-at eos))))
+	 ;; Tagged response without a literal: the message has gone
+	 ;; (OK), or the server refused (NO/BAD).
+	 (mew-imap-set-tag pnm nil)
+	 (if (string= (mew-match-string 1) "OK")
+	     (setq next "skip-fetch")
+	   (mew-imap-message pnm "Cannot retrieve a message")))
+	((or (null bytes) (< (point-max) bytes)
+	     (save-excursion (goto-char (point-max)) (not (bolp))))
+	 (setq stay t))
+	(t
 	 (goto-char (point-max))
 	 (forward-line -1)
 	 (while (looking-at "^\\*") (forward-line -1))
 	 (if (not (looking-at eos))
 	     (setq stay t)
 	   (delete-region (1+ bytes) (point-max))
-	   (setq next (mew-imap-fsm-next status "OK")))))
+	   (setq next (mew-imap-fsm-next status "OK"))))))
       ((and (goto-char (point-max)) (= (forward-line -1) 0) (looking-at "^\\*"))
        ;; untagged message
        (if (string= status "greeting")
@@ -1544,9 +1571,9 @@
       ((and (goto-char (point-min)) (looking-at "\\+ *\\(.*\\)"))
        (setq next (mew-imap-fsm-next
                    status
-                   (if (string= status "auth-xoauth2")
-                       (mew-auth-xoauth2-json-status (mew-match-string 1))
-                     "OK"))))
+                   ;; XOAUTH2 succeeds with a tagged OK.  A continuation
+                   ;; after the token is an error in JSON.
+                   (if (string= status "auth-xoauth2") "NO" "OK"))))
       ((and (goto-char (point-max)) (= (forward-line -1) 0) (looking-at eos))
        (mew-imap-set-tag pnm nil)
        (setq code (mew-match-string 1))
@@ -1581,7 +1608,7 @@
 (defun mew-imap-mark-recover (mdb)
   (let ((opos (point))
 	(case-fold-search nil)
-	msg mrk omrk)
+	(msg nil) (mrk nil) omrk)
     (goto-char (point-min))
     (dolist (ent mdb)
       (mew-set '(msg mrk) ent)
@@ -1616,7 +1643,8 @@
 	 (file (mew-expand-file bnm mew-imap-msgid-file))
 	 (buf (process-buffer process))
 	 (virtual-info (mew-imap-get-virtual-info pnm))
-	 (disp-info (mew-imap-get-disp-info pnm)))
+	 (disp-info (mew-imap-get-disp-info pnm))
+	 (sinfo-mark-hist (mew-sinfo-get-mark-hist)))
     (save-excursion
       (mew-imap-debug "IMAP SENTINEL" event)
       (set-process-buffer process nil)
@@ -1683,7 +1711,9 @@
 	  (mew-net-uidl-db-set (mew-imap-passtag pnm) uidl)
 	  (cond
 	   ((= rttl 0)
-	    (mew-imap-message pnm "No new messages"))
+	    (mew-imap-message pnm "No new messages")
+	    (when sinfo-mark-hist
+	      (mew-summary-folder-cache-save)))
 	   ((= rttl 1)
 	    (mew-imap-message pnm "1 message retrieved")
 	    (mew-summary-folder-cache-save))
@@ -1693,7 +1723,9 @@
 	 ((eq directive 'get)
 	  (cond
 	   ((= rttl 0)
-	    (mew-imap-message pnm "The message does not exist"))
+	    (mew-imap-message pnm "The message does not exist")
+	    (when sinfo-mark-hist
+	      (mew-summary-folder-cache-save)))
 	   ((= rttl 1)
 	    (mew-imap-message pnm "1 message retrieved")
 	    (mew-summary-folder-cache-save))
@@ -1704,7 +1736,9 @@
 	  (mew-biff-clear)
 	  (cond
 	   ((or (= rttl 0) (null msgid))
-	    (mew-imap-message pnm "No new messages"))
+	    (mew-imap-message pnm "No new messages")
+	    (when sinfo-mark-hist
+	      (mew-summary-folder-cache-save)))
 	   ((= rttl 1)
 	    (mew-imap-message pnm "1 message retrieved")
 	    (mew-lisp-save file msgid nil 'unlimit)
@@ -1720,7 +1754,8 @@
 		  (mew-inherit-offline t))
 	      (mew-mark-exec-refile bnm movs)))
 	  (when (or kils movs)
-	    (mew-mark-kill-invisible)
+	    (mew-mark-kill-invisible))
+	  (when (or kils movs sinfo-mark-hist)
 	    (mew-summary-folder-cache-save))
 	  (cond
 	   ((= rttl 1)
@@ -1752,7 +1787,7 @@
 	(run-hooks 'mew-imap-sentinel-non-biff-hook))
       (run-hooks 'mew-imap-sentinel-hook)
       (when (and mew-auto-flush-queue flush)
-	(mew-smtp-flush-queue mew-case)))))
+	(mew-smtp-flush-queue case)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-draft.el --- Draft mode for Mew
 
 ;; Author:  Mew developing team
@@ -81,7 +82,7 @@
     (mew-tinfo-set-privacy-type nil)
     (mew-tinfo-set-use-flowed (mew-use-format-flowed (mew-tinfo-get-case)))
     (mew-draft-mode-name) ;; must be after (mew-tinfo-set-encrypted-p encrypted)
-    (mew-run-mode-hooks 'text-mode-hook 'mew-draft-mode-hook)
+    (run-mode-hooks 'text-mode-hook 'mew-draft-mode-hook)
     ;; auto-fill-function is set by mew-draft-mode-hook
     (when auto-fill-function
       (make-local-variable 'auto-fill-function)
@@ -224,10 +225,10 @@ the Body: field."
 ;;;
 
 (defun mew-draft-header (&optional subject nl to cc newsgroups in-reply-to references other-headers fromme)
-;; to -- string or list
-;; cc -- string or list
-;; nl -- one empty line under "----", which is necessary if
-;;      attachment is prepared
+  ;; to -- string or list
+  ;; cc -- string or list
+  ;; nl -- one empty line under "----", which is necessary if
+  ;;      attachment is prepared
   (let ((del (unless fromme mew-regex-my-address-list)) ;; deleting list
 	case body)
     (goto-char (point-min))
@@ -322,8 +323,8 @@ citation prefix and label.
 2. If called with '\\[universal-argument]', the header is also copied if exists.
 3. If an Emacs mark exists, the target is the region between the mark and
    the cursor."
-;; MUST take care of C-x C-x
-;; MUST be able to cancel by C-x u
+  ;; MUST take care of C-x C-x
+  ;; MUST be able to cancel by C-x u
   (interactive "P")
   (if (and (not force) (or (mew-in-header-p) (mew-in-attach-p)))
       (message "Cannot cite a message here")
@@ -373,8 +374,8 @@ citation prefix and label.
 2. If called with '\\[universal-argument]', the header is also copied if exists.
 3. If an Emacs mark exists, the target is the region between the mark and
    the cursor."
-;; MUST take care of C-x C-x
-;; MUST be able to cancel by C-x u
+  ;; MUST take care of C-x C-x
+  ;; MUST be able to cancel by C-x u
   (interactive "P")
   (if (and (not force) (or (mew-in-header-p) (mew-in-attach-p)))
       (message "Cannot cite a message here")
@@ -524,7 +525,7 @@ citation prefix and label.
 
 (defun mew-cite-strings ()
   "A function to create cite labels according to
-'mew-cite-format' and 'mew-cite-fields'."
+`mew-cite-format' and `mew-cite-fields'."
   (if (null mew-cite-fields)
       ""
     (let* ((vals (mapcar 'mew-cite-get-value mew-cite-fields))
@@ -562,7 +563,7 @@ citation prefix and label.
 
 (defun mew-cite-prefix-username ()
   "A good candidate for mew-cite-prefix-function.
-The citation style is 'from_address> ', e.g. 'kazu> '"
+The citation style is `from_address> ', e.g. `kazu> '"
   (let* ((from (mew-header-parse-address mew-from:))
 	 (user (mew-addrstr-extract-user from))
 	 (func (mew-addrbook-func mew-addrbook-for-cite-prefix))
@@ -595,9 +596,9 @@ format=flowed is used on composing."
 	    (mew-decode-flowed (point) (point-max)
 			       (if (string= (mew-tinfo-get-flowed) "yes") t nil))
 	    (mew-tinfo-set-flowed nil))
-	(let* ((charset (mew-charset-guess-region (point) (point-max)))
-	       (flowed-delsp (mew-encode-flowed (point) (point-max) charset))
-	       flowed delsp)
+	(let* ((flowed-delsp (mew-encode-flowed (point) (point-max)))
+	       (flowed nil)
+	       (delsp nil))
 	  (mew-set '(flowed delsp) flowed-delsp)
 	  (if (not flowed)
 	      (message "No line folded")
@@ -607,13 +608,13 @@ format=flowed is used on composing."
 
 (defun mew-draft-use-format-flowed (&optional arg)
   "Toggle the use of format=flowed for the current draft.
-If called with '\\[universal-argument]', enable format=flowed if the argument
+If called with `\\[universal-argument]', enable format=flowed if the argument
 is positive.  You can use `mew-draft-use-format-flowed-hooks' to
 enable interesting minor modes according to whether the message is
 flowed or not.  Here is an example:
 
-\(add-hook 'mew-draft-use-format-flowed-hooks
-     '(lambda()
+\(add-hook \\='mew-draft-use-format-flowed-hooks
+     \\='(lambda()
 	(if mew-use-format-flowed
 	    (progn
 	      (auto-fill-mode 0)
@@ -636,11 +637,33 @@ flowed or not.  Here is an example:
 ;;; Misc
 ;;;
 
+(defun mew-draft-body-clear-read-only ()
+  "Take the read-only property off the body of this draft.
+In a draft only the header separator and the attachments are meant to
+carry it.  A body which has somehow come by it can be neither edited
+nor sent, and nothing takes it off again, so the draft stays that way
+for as long as the buffer lives.  See #128."
+  (let ((end (mew-header-end)))
+    (when end
+      (save-excursion
+	(goto-char end)
+	(forward-line) ;; over the separator
+	(let ((beg (point))
+	      ;; the attachments keep theirs
+	      (fin (or (mew-attach-begin) (point-max))))
+	  (when (< beg fin)
+	    (mew-elet
+	     (put-text-property beg fin 'read-only nil))))))))
+
 (defun mew-draft-save-buffer ()
   "Save this draft."
   (interactive)
   (let ((after-change-functions nil))
     (save-excursion
+      ;; This runs at the end of every draft preparation and again on
+      ;; every C-x C-s, so a body which has come by the property is
+      ;; freed rather than staying stuck.
+      (mew-draft-body-clear-read-only)
       (mew-header-clear 'keep-read-only)
       (insert-before-markers "\n") ;; for mew-summary-reply
       (save-buffer)
@@ -662,6 +685,8 @@ flowed or not.  Here is an example:
       (save-buffer)
       (mew-delete-file draft)
       (mew-delete-file mdi)
+      ;; save-buffer has just made it
+      (mew-delete-file (mew-prepend-prefix draft mew-backup-prefix))
       (if (and (mew-tinfo-get-other-frame) (> (length (frame-list)) 1))
 	  (delete-frame)
 	(mew-current-get-window-config))
@@ -851,8 +876,8 @@ Set privacy service which will be effective when \\[mew-draft-make-message]."
 	  (save-window-excursion
 	    (set-buffer buf)
 	    (if (mew-smtp-encode pnm case resentp fcc privacy signer)
-		(let ((mdi (concat (buffer-file-name) mew-draft-info-suffix)))
-		  (mew-delete-file mdi)
+		(progn
+		  (mew-encode-delete-backup)
 		  (setq msg (mew-smtp-queue case "from Draft mode"))
 		  (mew-remove-buffer buf)
 		  (if (eq action 'send)
@@ -896,8 +921,8 @@ Set privacy service which will be effective when \\[mew-draft-make-message]."
 	  (save-window-excursion
 	    (set-buffer buf)
 	    (if (mew-nntp2-encode pnm case fcc privacy signer)
-		(let ((mdi (concat (buffer-file-name) mew-draft-info-suffix)))
-		  (mew-delete-file mdi)
+		(progn
+		  (mew-encode-delete-backup)
 		  (setq msg (mew-nntp2-queue case "from Draft mode"))
 		  (mew-remove-buffer buf)
 		  (if (eq action 'send)
@@ -952,7 +977,7 @@ Set privacy service which will be effective when \\[mew-draft-make-message]."
 (defvar mew-draft-privacy-method-alist '(("pgp" . pgp) ("smime" . smime)))
 
 (defun mew-draft-set-privacy-method ()
-  "Set mew-draft-privacy-method. 'pgp or 'smime."
+  "Set mew-draft-privacy-method. `pgp' or `smime'."
   (interactive)
   (let ((method (completing-read "Privacy method: " mew-draft-privacy-method-alist nil t)))
     (setq mew-draft-privacy-method

@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-unix.el -- Settings for Mew on Unix
 
 ;; Author:  Mew developing team
@@ -79,7 +80,6 @@
 ;;; Image
 ;;;
 
-(defvar mew-prog-image/*         'mew-mime-image/*)
 (defvar mew-prog-image/*-ext     '("display" ("-geometry" "+0+0")))
 
 

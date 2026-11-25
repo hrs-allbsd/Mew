@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-config.el
 
 ;; Author:  Mew developing team
@@ -117,7 +118,7 @@
 (defun mew-mail-address (&optional case)
   (concat (mew-user case) "@" (mew-mail-domain case)))
 
-;; mew-from is really strange to maintain backword compatibility.
+;; mew-from is really strange to maintain backward compatibility.
 (defun mew-from (&optional case)
   (or (unless mew-config-alist
 	(if mew-generate-from-list
@@ -225,11 +226,14 @@
   (let* ((random (format "%08d" (mew-random)))
 	 (domain (mew-smtp-msgid-domain case))
 	 (user (mew-smtp-msgid-user case))
-	 (time (mew-time-ctz-to-msgid (current-time))))
+	 (time (mew-time-ctz-to-msgid nil)))
     (concat "<" time "." random "." user "@" domain ">")))
 
 (defun mew-use-smtp-auth (&optional case)
   (mew-cfent-value case "use-smtp-auth" mew-use-smtp-auth))
+
+(defun mew-auth-cleartext-allowed (&optional case)
+  (mew-cfent-value case "auth-cleartext-allowed" mew-auth-cleartext-allowed))
 
 (defun mew-smtp-auth-plain-authorize-id (&optional case)
   (mew-cfent-value case "smtp-auth-plain-authorize-id" mew-smtp-auth-plain-authorize-id))
@@ -373,7 +377,7 @@
   (let* ((random (format "%08d" (mew-random)))
 	 (domain (mew-nntp-msgid-domain case))
 	 (user (mew-nntp-msgid-user case))
-	 (time (mew-time-ctz-to-msgid (current-time))))
+	 (time (mew-time-ctz-to-msgid nil)))
     (concat "<" time "." random "." user "@" domain ">")))
 ;;
 
@@ -516,6 +520,30 @@
 (defun mew-use-format-flowed (&optional case)
   (mew-cfent-value case "use-format-flowed" mew-use-format-flowed))
 
+;;
+
+(defun mew-oauth2-client-id (&optional case)
+  (mew-cfent-value case "oauth2-client-id" mew-oauth2-client-id))
+
+(defun mew-oauth2-client-secret (&optional case)
+  (mew-cfent-value case "oauth2-client-secret" mew-oauth2-client-secret))
+
+(defun mew-oauth2-redirect-url (&optional case)
+  (mew-cfent-value case "oauth2-redirect-url" mew-oauth2-redirect-url))
+
+(defun mew-oauth2-redirect-port (&optional case)
+  (mew-cfent-value case "oauth2-redirect-port" mew-oauth2-redirect-port))
+
+(defun mew-oauth2-auth-url (&optional case)
+  (mew-cfent-value case "oauth2-auth-url" mew-oauth2-auth-url))
+
+(defun mew-oauth2-token-url (&optional case)
+  (mew-cfent-value case "oauth2-token-url" mew-oauth2-token-url))
+
+(defun mew-oauth2-resource-url (&optional case)
+  (mew-cfent-value case "oauth2-resource-url" mew-oauth2-resource-url))
+
+
 ;;;
 ;;; Setting case
 ;;;
@@ -604,7 +632,7 @@ fields in the header according to the new value."
 	  (mew-draft-header-insert mew-x-mailer: mew-x-mailer)))))
 
 (defun mew-draft-get-case-by-guess (&optional alist)
-  "Guess case according to 'mew-case-guess-alist'."
+  "Guess case according to `mew-case-guess-alist'."
   (unless alist (setq alist mew-case-guess-alist))
   (let ((cases (mew-refile-guess-by-alist1 alist)))
     (if cases

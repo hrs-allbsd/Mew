@@ -16,7 +16,7 @@
 
 ################################################################
 ##
-## EDIT THE FOLLOWINGS
+## EDIT THE FOLLOWING
 ##
 
 prefix=@prefix@
@@ -46,7 +46,10 @@ elispdir = @elispdir@
 etcdir = @etcdir@
 #etcdir = $(prefix)/share/emacs/site-lisp/mew/etc
 
-DETECT = emacs
+## The Emacs that "make detect" compiles with. Override it to look for
+## warnings with a newer Emacs than the one Mew is built with.
+
+DETECT = $(EMACS)
 
 CP = cp
 RM = rm -f
@@ -61,49 +64,65 @@ DESTDIR =
 
 ################################################################
 
+.PHONY: all
 all: elisp bin
 
+.PHONY: install
 install: install-elisp install-bin install-info install-etc
 
 ################################################################
 
-elisp::
+.PHONY: elisp
+elisp:
 	cd elisp; $(MAKE) EMACS=$(EMACS)
 
+.PHONY: install-elisp
 install-elisp:
 	cd elisp; $(MAKE) install EMACS=$(EMACS) elispdir=$(elispdir) DESTDIR=$(DESTDIR)
 
 ################################################################
 
-detect::
-	cd elisp; $(MAKE) detect EMACS=$(EMACS)
+.PHONY: detect
+detect:
+	cd elisp; $(MAKE) detect EMACS=$(EMACS) DETECT=$(DETECT)
+
+.PHONY: test
+test:
+	cd elisp; $(MAKE) test EMACS=$(EMACS)
 
 ################################################################
 
-bin::
+.PHONY: bin
+bin:
 	cd bin; $(MAKE)
 
+.PHONY: install-bin
 install-bin:
 	cd bin; $(MAKE) install DESTDIR=$(DESTDIR)
 
 ################################################################
 
-info::
+.PHONY: info
+info:
 	cd info; $(MAKE) info EMACS=$(EMACS)
 
+.PHONY: install-info
 install-info:
 	cd info; $(MAKE) install-info infodir=$(infodir) DESTDIR=$(DESTDIR)
 
 ################################################################
 
+.PHONY: jinfo
 jinfo:
 	cd info; $(MAKE) jinfo EMACS=$(EMACS)
 
+.PHONY: install-jinfo
 install-jinfo:
 	cd info; $(MAKE) install-jinfo infodir=$(infodir) DESTDIR=$(DESTDIR)
 
 ################################################################
 
+.PHONY: install-etc
 install-etc:
 	-@if [ ! -d $(DESTDIR)$(etcdir) ]; then \
 		$(MKDIR) $(DESTDIR)$(etcdir); \
@@ -112,6 +131,7 @@ install-etc:
 
 ################################################################
 
+.PHONY: clean
 clean:
 	-@if [ -f elisp/Makefile ]; then \
 		cd elisp; $(MAKE) clean; \
@@ -120,6 +140,7 @@ clean:
 		cd bin; $(MAKE) clean; \
 	fi
 
+.PHONY: distclean
 distclean:
 	$(RM) $(CNF) $(MK)
 	-@if [ -f elisp/Makefile ]; then \
@@ -139,16 +160,23 @@ distclean:
 # make diff    to see the updates
 # git pull
 
-log::
+.PHONY: log
+log:
 	git log HEAD..FETCH_HEAD
 
-diff::
+.PHONY: diff
+diff:
 	git diff HEAD..FETCH_HEAD
 
-VERSION = `git tag | tail -1 | sed -e 's/v//'`
+VERSION = `git tag --sort=authordate | tail -1 | sed -e 's/v//'`
 
+# The branch to make the tarball from.  Say "make archive BRANCH=7.1rc"
+# to cut one from a release branch instead.
+BRANCH = main
+
+.PHONY: archive
 archive:
-	git archive master -o ~/mew-$(VERSION).tar --prefix=mew-$(VERSION)/
+	git archive $(BRANCH) -o ~/mew-$(VERSION).tar --prefix=mew-$(VERSION)/
 	gzip ~/mew-$(VERSION).tar
 
 ##

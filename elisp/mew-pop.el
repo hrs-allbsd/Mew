@@ -1,3 +1,4 @@
+;;; -*- lexical-binding: t; -*-
 ;;; mew-pop.el
 
 ;; Author:  Mew developing team
@@ -6,6 +7,8 @@
 ;;; Code:
 
 (require 'mew)
+
+(declare-function string-replace "subr")
 
 (defvar mew-pop-msgid-file ".mew-msgid")
 (defvar mew-pop-folder-alist (list (mew-folder-func mew-pop-inbox-folder)))
@@ -21,7 +24,7 @@
 ;;;
 
 (defvar mew-pop-info-list
-  '("server" "port" "process" "ssh-process" "ssl-process" "ssl-p" "status"
+  '("server" "port" "process" "ssh-process" "ssl-process" "secure" "status"
     "directive" "bnm" "mdb"
     "rtrs" "dels" "refs" "rmvs" "kils" "left" "uidl" "range"
     "rttl" "rcnt" "dttl" "dcnt" "hlds"
@@ -41,7 +44,9 @@
 (defvar mew-pop-fsm
   '(("greeting"      nil ("\\+OK" . "capa"))
     ("capa"          t   ("\\+OK" . "auth") ("-ERR" . "pswd"))
-    ("xoauth2"       nil ("\\+OK" . "list") ("-ERR" . "wpwd"))
+    ("auth-xoauth2"  nil ("\\+OK" . "token-xoauth2") ("-ERR" . "wpwd"))
+    ("token-xoauth2" nil ("\\+OK" . "list") ("challenge" . "xoauth2-error") ("-ERR" . "wpwd"))
+    ("xoauth2-error" nil ("\\+OK" . "wpwd") ("-ERR" . "wpwd"))
     ("auth-cram-md5" nil ("\\+OK" . "pwd-cram-md5") ("-ERR" . "wpwd"))
     ("pwd-cram-md5"  nil ("\\+OK" . "list") ("-ERR" . "wpwd"))
     ("auth-plain"    nil ("\\+OK" . "pwd-plain") ("-ERR" . "wpwd"))
@@ -81,7 +86,7 @@
 ;;;
 
 (defun mew-pop-secure-p (pnm)
-  (or (mew-pop-get-ssh-process pnm) (mew-pop-get-ssl-p pnm)))
+  (mew-pop-get-secure pnm))
 
 (defun mew-pop-command-capa (pro pnm)
   (mew-net-status (mew-pop-get-status-buf pnm)
@@ -104,7 +109,14 @@
       (if (and auth
 	       (setq func (mew-pop-auth-get-func auth))
 	       (fboundp func))
-	  (progn
+	  (if (mew-auth-cleartext-refused-p
+	       auth (mew-pop-get-secure pnm) (mew-pop-get-case pnm))
+	      (progn
+		(mew-pop-message
+		 pnm (mew-auth-cleartext-refuse "POP" auth (mew-pop-get-case pnm)))
+		(if (eq (mew-pop-get-directive pnm) 'exec)
+		    (mew-summary-visible-buffer (mew-pop-get-bnm pnm)))
+		(mew-pop-command-quit2 pro pnm))
 	    (mew-pop-set-auth pnm auth)
 	    (funcall func pro pnm))
 	(mew-pop-debug "<AUTH>" "No preferred POP AUTH.\n")
@@ -128,8 +140,8 @@
 
 (defun mew-pop-command-pass (pro pnm)
   (let* ((prompt (format "POP password (%s): "
-                        (mew-pop-get-account pnm)))
-          (passwd (mew-pop-input-passwd prompt pnm)))
+                         (mew-pop-get-account pnm)))
+         (passwd (mew-pop-input-passwd prompt pnm)))
     (mew-pop-message pnm "Sending your POP password to the POP server...")
     (mew-pop-process-send-string pro "PASS %s" passwd)))
 
@@ -169,7 +181,7 @@
      (t
       ;; pnm may be cleared already
       (mew-pop-message pnm "POP password is wrong!")))
-    (if clear-pass (mew-passwd-set-passwd (mew-pop-passtag pnm) nil))
+    (if clear-pass (mew-passwd-forget-passwd (mew-pop-passtag pnm)))
     (if (eq directive 'exec)
 	(mew-summary-visible-buffer bnm))
     (mew-pop-command-quit2 pro pnm)))
@@ -236,7 +248,10 @@
 	 (del-time (mew-pop-get-delete pnm))
 	 (bnm (mew-pop-get-bnm pnm))
 	 (range (mew-pop-get-range pnm))
-	 (ctime (current-time))
+	 ;; Keep timestamps in (HI LO USEC PSEC) form,
+	 ;; so that the generated files can be read
+	 ;; by Mew versions predating August 2026.
+	 (ctime (time-convert nil 'list))
 	 (left 0)
 	 rtr rtrs dels num uid uidl old-uidl uid-time hlds)
     (cond
@@ -511,11 +526,22 @@
   (nth 1 (mew-assoc-case-equal auth mew-pop-auth-alist 0)))
 
 (defun mew-pop-command-auth-xoauth2 (pro pnm)
+  ;; MS365 does not accept "AUTH XOAUTH2 <token>" in a single line.
+  ;; It requires the SASL continuation exchange: send "AUTH XOAUTH2",
+  ;; wait for the "+ " response, then send the token separately.
+  (mew-pop-process-send-string pro "AUTH XOAUTH2")
+  (mew-pop-set-status pnm "auth-xoauth2"))
+
+(defun mew-pop-command-token-xoauth2 (pro pnm)
   (let* ((user (mew-pop-get-user pnm))
-         (token (mew-auth-oauth2-token-access-token))
-         (auth-string (mew-auth-xoauth2-auth-string user token)))
-    (mew-pop-process-send-string pro "AUTH XOAUTH2 %s" auth-string)
-    (mew-smtp-set-status pnm "auth-xoauth2")))
+	 (tag (mew-pop-passtag pnm))
+         (auth-string (mew-xoauth2-auth-string user tag (mew-pop-get-case pnm))))
+    (mew-pop-process-send-string pro "%s" auth-string)))
+
+(defun mew-pop-command-xoauth2-error (pro _pnm)
+  ;; Gmail refuses the token with a challenge carrying an error JSON.
+  ;; An empty response makes the server answer with -ERR.
+  (mew-pop-process-send-string pro ""))
 
 (defun mew-pop-command-auth-cram-md5 (pro pnm)
   (mew-pop-process-send-string pro "AUTH CRAM-MD5")
@@ -569,7 +595,7 @@
 
 (defun mew-pop-process-send-string (pro &rest args)
   (let ((str (apply 'format args)))
-    (mew-pop-debug "=SEND=" str)
+    (mew-pop-debug "=SEND=" (mew-debug-redact str))
     (if (and (processp pro) (eq (process-status pro) 'open))
 	(process-send-string pro (concat str mew-cs-eol))
       (message "POP time out")))) ;; not mew-pop-message
@@ -621,27 +647,26 @@
 
 (defun mew-pop-open (pnm case server port no-msg starttlsp)
   (let ((sprt (mew-*-to-port port))
-	(sslnp (mew-ssl-native-p (mew-pop-ssl case)))
+	(gnutlsp (mew-gnutls-p (mew-pop-ssl case)))
+	(pro-plist (list nil))
 	pro tm)
     (condition-case emsg
 	(progn
 	  (setq tm (run-at-time mew-pop-timeout-time nil 'mew-pop-timeout))
 	  (or no-msg (message "Connecting to the POP server..."))
-	  (setq pro (mew-open-network-stream pnm nil server sprt
-					     'pop sslnp starttlsp case))
-	  (setq pro (car pro))
+	  (setq pro-plist (mew-open-network-stream pnm nil server sprt
+						   'pop gnutlsp starttlsp case))
+	  (setq pro (car pro-plist))
 	  (when (not (processp pro)) (signal 'quit nil))
 	  (mew-process-silent-exit pro)
 	  (mew-set-process-cs pro mew-cs-text-for-net mew-cs-text-for-net)
 	  (or no-msg (message "Connecting to the POP server...done")))
       (quit
-       (or no-msg (message "Cannot connect to the POP server"))
-       (setq pro nil))
+       (or no-msg (message "Cannot connect to the POP server")))
       (error
-       (or no-msg (message "%s, %s" (nth 1 emsg) (nth 2 emsg)))
-       (setq pro nil)))
+       (or no-msg (message "%s, %s" (nth 1 emsg) (nth 2 emsg)))))
     (if tm (cancel-timer tm))
-    pro))
+    pro-plist))
 
 (defun mew-pop-timeout ()
   ;; Do not timeout if the NSM query pane is active.
@@ -661,49 +686,51 @@
          (user (mew-pop-user case))
 	 (port (mew-*-to-string (mew-pop-port case)))
 	 (sshsrv (mew-pop-ssh-server case))
-	 (sslp (mew-pop-ssl case))
+	 (stunnelp (mew-stunnel-p (mew-pop-ssl case)))
 	 (sslport (mew-pop-ssl-port case))
-	 (sslnp (mew-ssl-native-p (mew-pop-ssl case)))
+	 (gnutlsp (mew-gnutls-p (mew-pop-ssl case)))
 	 (starttlsp
-	  (mew-ssl-starttls-p (mew-pop-ssl case)
-			     (mew-*-to-string (mew-pop-port case))
-			     (mew-pop-ssl-port case)))
+	  (mew-starttls-p (mew-pop-ssl case)
+			  (mew-*-to-string (mew-pop-port case))
+			  (mew-pop-ssl-port case)))
          (proxysrv (mew-pop-proxy-server case))
          (proxyport (mew-pop-proxy-port case))
 	 (pnm (mew-pop-info-name case))
 	 (buf (get-buffer-create (mew-pop-buffer-name pnm)))
 	 (no-msg (eq directive 'biff))
-	 process sshname sshpro sslname sslpro lport tls
-	 virtual-info disp-info virtual)
+	 process sshname sshpro sslname sslpro lport protocol pro-plist
+	 virtual-info disp-info virtual secure)
     (if (mew-pop-get-process pnm)
 	(message "Another POP process is running. Try later")
       (cond
-       (sslnp
+       (gnutlsp
 	(let ((serv (if starttlsp port sslport)))
-	  (setq process (mew-pop-open pnm case server serv no-msg starttlsp))))
+	  (setq pro-plist (mew-pop-open pnm case server serv no-msg starttlsp))))
        (sshsrv
 	(setq sshpro (mew-open-ssh-stream case server port sshsrv))
 	(when sshpro
 	  (setq sshname (process-name sshpro))
 	  (setq lport (mew-ssh-pnm-to-lport sshname))
 	  (when lport
-	    (setq process (mew-pop-open pnm case "localhost" lport no-msg nil)))))
-       (sslp
-	(when starttlsp (setq tls mew-tls-pop))
-	(setq sslpro (mew-open-ssl-stream case server sslport tls))
+	    (setq pro-plist (mew-pop-open pnm case "localhost" lport no-msg nil)))))
+       (stunnelp
+	(when starttlsp (setq protocol mew-stunnel-protocol-pop))
+	(setq sslpro (mew-open-stunnel-stream case server sslport protocol))
 	(when sslpro
 	  (setq sslname (process-name sslpro))
 	  (setq lport (mew-ssl-pnm-to-lport sslname))
 	  (when lport
-	    (setq process (mew-pop-open pnm case mew-ssl-localhost lport no-msg nil)))))
+	    (setq pro-plist (mew-pop-open pnm case mew-stunnel-localhost lport no-msg nil)))))
        (proxysrv
-	(setq process (mew-pop-open pnm case proxysrv proxyport no-msg nil)))
+	(setq pro-plist (mew-pop-open pnm case proxysrv proxyport no-msg nil)))
        (t
-	(setq process (mew-pop-open pnm case server port no-msg nil))))
+	(setq pro-plist (mew-pop-open pnm case server port no-msg nil))))
+      (setq process (car pro-plist))
       (if (null process)
 	  (if (eq directive 'exec)
 	      (mew-summary-visible-buffer bnm))
-	(mew-summary-lock process "POPing" (or sshpro sslp))
+	(setq secure (or sshpro stunnelp gnutlsp))
+	(mew-summary-lock process "POPing" secure)
 	(mew-sinfo-set-summary-form (mew-get-summary-form bnm))
 	(mew-sinfo-set-summary-column (mew-get-summary-column bnm))
 	(mew-sinfo-set-unread-mark nil)
@@ -715,7 +742,7 @@
 	(mew-pop-set-process pnm process)
 	(mew-pop-set-ssh-process pnm sshpro)
 	(mew-pop-set-ssl-process pnm sslpro)
-	(mew-pop-set-ssl-p pnm sslp)
+	(mew-pop-set-secure pnm secure)
 	(mew-pop-set-server pnm server)
 	(mew-pop-set-port pnm port)
 	(mew-pop-set-user pnm user)
@@ -751,7 +778,7 @@
 	  (when virtual
 	    (mew-pop-set-status-buf pnm virtual)
 	    (with-current-buffer virtual
-	      (mew-summary-lock process "POPing" (or sshpro sslp)))))
+	      (mew-summary-lock process "POPing" (or sshpro stunnelp gnutlsp)))))
 	 ((eq directive 'scan)
 	  (mew-pop-set-range pnm (nth 0 args))
 	  (mew-pop-set-get-body pnm (nth 1 args))
@@ -770,12 +797,9 @@
 	(set-process-sentinel process 'mew-pop-sentinel)
 	(set-process-filter process 'mew-pop-filter)
 	(set-process-buffer process buf)
-	(when sslnp
-	  ;; GnuTLS requires a client-initiated command after the
-	  ;; session is established or upgraded to use TLS because
-	  ;; no additional greeting from the server.
-	  (mew-pop-command-capa process pnm))
-	))))
+	(when gnutlsp
+	  (let ((greeting (plist-get (cdr pro-plist) :greeting)))
+	    (if (stringp greeting) (mew-pop-filter process greeting))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -818,7 +842,14 @@
 		(and (not mulrep)
 		     (goto-char (1- (point-max)))
 		     (looking-at "\n$"))))
-       (setq next (mew-pop-fsm-next status "+OK")))
+       (setq next (mew-pop-fsm-next
+		   status
+		   ;; After the XOAUTH2 token, "+ " is an error challenge.
+		   (if (and (string= status "token-xoauth2")
+			    (not (progn (goto-char (point-min))
+					(looking-at "\\+OK"))))
+		       "challenge"
+		     "+OK"))))
       (t
        (setq stay t)))
      (unless stay
@@ -835,6 +866,7 @@
 (defun mew-pop-sentinel (process event)
   (let* ((pnm (process-name process))
 	 (directive (mew-pop-get-directive pnm))
+	 (case (mew-pop-get-case pnm))
 	 (mdb (mew-pop-get-mdb pnm))
 	 (sshpro (mew-pop-get-ssh-process pnm))
 	 (sslpro (mew-pop-get-ssl-process pnm))
@@ -957,7 +989,7 @@
 	(run-hooks 'mew-pop-sentinel-non-biff-hook))
       (run-hooks 'mew-pop-sentinel-hook)
       (when (and mew-auto-flush-queue flush)
-	(mew-smtp-flush-queue mew-case)))))
+	(mew-smtp-flush-queue case)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
